@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Market Lens — Stock Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+  // Set this to your deployed backend URL before pushing to GitHub Pages, e.g.
+  // window.MARKET_LENS_API = 'https://your-app.onrender.com';
+  window.MARKET_LENS_API = 'http://localhost:5000';
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0e1a;
+  --surface: #111827;
+  --surface2: #1a2235;
+  --border: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.15);
+  --text: #f0f4ff;
+  --text-2: #8b93a8;
+  --text-3: #4a5568;
+  --accent: #3b82f6;
+  --accent-dim: rgba(59,130,246,0.15);
+  --green: #10b981;
+  --green-dim: rgba(16,185,129,0.12);
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.12);
+  --amber: #f59e0b;
+  --radius: 10px;
+  --radius-lg: 16px;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Layout ── */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; height: 60px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.logo { font-size: 16px; font-weight: 600; letter-spacing: -0.3px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
+
+.main { display: grid; grid-template-columns: 280px 1fr; flex: 1; }
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  overflow-y: auto;
+}
+
+.content { padding: 24px; overflow-x: hidden; }
+
+/* ── Search ── */
+.search-wrap { padding: 0 16px 16px; }
+.search-box {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); padding: 9px 12px; cursor: text;
+}
+.search-box input {
+  background: none; border: none; outline: none; color: var(--text);
+  font-family: inherit; font-size: 13px; width: 100%;
+}
+.search-box input::placeholder { color: var(--text-3); }
+.search-icon { color: var(--text-3); font-size: 15px; flex-shrink: 0; }
+
+/* ── Company list ── */
+.section-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--text-3); padding: 8px 16px 6px;
+}
+
+.company-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; cursor: pointer; border-radius: 0;
+  transition: background 0.12s; gap: 10px;
+  border-left: 2px solid transparent;
+}
+.company-item:hover { background: var(--surface2); }
+.company-item.active { background: var(--accent-dim); border-left-color: var(--accent); }
+
+.co-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ticker-badge {
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+  background: var(--surface2); color: var(--text-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px; padding: 2px 6px; flex-shrink: 0;
+  min-width: 42px; text-align: center;
+}
+.company-item.active .ticker-badge { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+.co-name { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.co-price { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text); flex-shrink: 0; }
+
+/* ── Timeframe ── */
+.timeframe-strip {
+  display: flex; align-items: center; gap: 4px;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+.tf-btn {
+  font-size: 11px; font-weight: 500; padding: 5px 9px; border-radius: 6px;
+  border: 1px solid transparent; background: none; color: var(--text-3);
+  cursor: pointer; transition: all 0.12s; font-family: inherit;
+}
+.tf-btn:hover { background: var(--surface2); color: var(--text-2); }
+.tf-btn.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+/* ── Compare toggle ── */
+.compare-wrap { padding: 0 16px 12px; }
+.compare-toggle {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-2); cursor: pointer; user-select: none;
+}
+.toggle-track {
+  width: 32px; height: 18px; border-radius: 9px; background: var(--border-strong);
+  position: relative; transition: background 0.2s; flex-shrink: 0;
+}
+.toggle-track.on { background: var(--accent); }
+.toggle-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: white; transition: left 0.2s;
+}
+.toggle-track.on .toggle-thumb { left: 16px; }
+
+/* ── Compare list ── */
+.compare-list { padding: 0 16px; display: none; }
+.compare-list.show { display: block; }
+.compare-check {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; font-size: 12px; color: var(--text-2);
+  cursor: pointer;
+}
+.compare-check input[type=checkbox] { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
+
+/* ── Content header ── */
+.content-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+.co-headline h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; }
+.co-headline .tagline { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+
+.price-block { text-align: right; }
+.price-big { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 500; line-height: 1; }
+.price-delta {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 13px; font-weight: 500; margin-top: 4px;
+  padding: 3px 8px; border-radius: 5px;
+}
+.price-delta.up { background: var(--green-dim); color: var(--green); }
+.price-delta.dn { background: var(--red-dim); color: var(--red); }
+
+/* ── Stat row ── */
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.stat-label { font-size: 11px; color: var(--text-3); margin-bottom: 4px; letter-spacing: 0.3px; }
+.stat-val { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 500; color: var(--text); }
+.stat-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+
+/* ── Chart area ── */
+.chart-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 20px;
+}
+.chart-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px 12px; border-bottom: 1px solid var(--border);
+}
+.chart-title { font-size: 14px; font-weight: 500; color: var(--text); }
+.chart-meta { font-size: 12px; color: var(--text-3); }
+.chart-legend { display: flex; gap: 16px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); }
+.legend-dot { width: 10px; height: 3px; border-radius: 2px; }
+
+.chart-body { padding: 16px 20px 20px; }
+.chart-wrap { position: relative; width: 100%; }
+
+/* ── MA toggles ── */
+.ma-controls { display: flex; gap: 8px; padding: 0 20px 16px; }
+.ma-btn {
+  font-size: 11px; padding: 4px 10px; border-radius: 5px;
+  border: 1px solid var(--border-strong); background: none;
+  color: var(--text-3); cursor: pointer; font-family: inherit;
+  transition: all 0.12s;
+}
+.ma-btn.on { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+.ma-btn[data-ma="20"].on { background: rgba(16,185,129,0.12); color: var(--green); border-color: var(--green); }
+
+/* ── Volume chart ── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+/* ── Loading ── */
+.loading-state {
+  display: flex; align-items: center; justify-content: center;
+  height: 200px; color: var(--text-3); gap: 8px; flex-direction: column;
+}
+.spinner {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid var(--border-strong); border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Info strip ── */
+.info-strip {
+  display: flex; gap: 24px; flex-wrap: wrap;
+  padding: 14px 20px; background: var(--bg); border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.info-item { display: flex; gap: 6px; }
+.info-key { color: var(--text-3); }
+.info-val { color: var(--text-2); font-family: 'JetBrains Mono', monospace; }
+
+/* ── No results ── */
+.no-results { padding: 16px; font-size: 12px; color: var(--text-3); text-align: center; }
+
+/* ── Tooltip ── */
+.info-ic {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:13px; height:13px; border-radius:50%; border:1px solid var(--text-3);
+  color:var(--text-3); font-size:9px; cursor:help; position:relative; margin-left:4px;
+}
+.info-ic .tip {
+  display:none; position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+  background:#1a2235; color:var(--text); font-size:11px; font-weight:400;
+  padding:8px 10px; border-radius:7px; border:1px solid var(--border-strong);
+  width:190px; line-height:1.4; z-index:50; box-shadow:0 6px 20px rgba(0,0,0,0.4);
+}
+.info-ic:hover .tip, .info-ic:focus .tip { display:block; }
+
+/* ── Tabs ── */
+.view-tabs { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid var(--border); }
+.view-tab {
+  font-size:13px; font-weight:500; padding:9px 4px; margin-right:16px;
+  background:none; border:none; color:var(--text-3); cursor:pointer;
+  border-bottom:2px solid transparent; font-family:inherit;
+}
+.view-tab.active { color:var(--text); border-bottom-color:var(--accent); }
+
+/* ── Cross badge ── */
+.cross-badge {
+  display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:500;
+  padding:3px 9px; border-radius:6px; margin-left:8px;
+}
+.cross-badge.golden { background:rgba(245,158,11,0.14); color:var(--amber); }
+.cross-badge.death  { background:var(--red-dim); color:var(--red); }
+
+/* ── Screener table ── */
+.screener-table { width:100%; border-collapse:collapse; font-size:13px; }
+.screener-table th {
+  text-align:left; font-size:11px; color:var(--text-3); font-weight:500;
+  padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap;
+}
+.screener-table td { padding:11px 12px; border-bottom:1px solid var(--border); }
+.screener-table tr:hover td { background:var(--surface2); cursor:pointer; }
+.score-pill {
+  display:inline-block; padding:2px 9px; border-radius:6px; font-size:11px; font-weight:500;
+}
+.score-pill.strong { background:var(--green-dim); color:var(--green); }
+.score-pill.watch { background:rgba(245,158,11,0.14); color:var(--amber); }
+.score-pill.weak { background:var(--red-dim); color:var(--red); }
+.data-src {
+  font-size:11px; color:var(--text-3); display:flex; align-items:center; gap:6px;
+  padding:6px 16px 14px;
+}
+.data-src .dot { width:6px; height:6px; border-radius:50%; }
+.data-src .dot.live { background:var(--green); }
+.data-src .dot.sim { background:var(--amber); }
+.search-results { padding:4px 0; border-bottom:1px solid var(--border); margin-bottom:4px; }
+.search-results .company-item { opacity:0.95; }
+.search-loading { padding:8px 16px; font-size:11px; color:var(--text-3); }
+.remove-x {
+  opacity:0; width:16px; height:16px; display:flex; align-items:center; justify-content:center;
+  color:var(--text-3); border-radius:4px; flex-shrink:0;
+}
+.company-item:hover .remove-x { opacity:1; }
+.remove-x:hover { background:var(--red-dim); color:var(--red); }
+
+@media (max-width: 768px) {
+  .main { grid-template-columns: 1fr; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 260px; }
+  .stat-row { grid-template-columns: repeat(2, 1fr); }
+  .two-col { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="logo"><span class="logo-dot"></span> Market Lens</div>
+  <div style="font-size:12px;color:var(--text-3);">Simulated data · Educational use</div>
+</header>
+
+<div class="main">
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="search-wrap">
+    <div class="search-box">
+      <svg class="search-icon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="searchInput" placeholder="Search companies…" autocomplete="off" aria-label="Search companies">
+    </div>
+  </div>
+
+  <div class="section-label">Companies</div>
+  <div id="companyList"></div>
+
+  <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:4px;">
+    <div class="section-label">Timeframe</div>
+    <div class="timeframe-strip" id="tfStrip">
+      <button class="tf-btn" data-tf="1M">1M</button>
+      <button class="tf-btn active" data-tf="6M">6M</button>
+      <button class="tf-btn" data-tf="1Y">1Y</button>
+      <button class="tf-btn" data-tf="2Y">2Y</button>
+      <button class="tf-btn" data-tf="3Y">3Y</button>
+    </div>
+  </div>
+
+  <div class="data-src" id="dataSrc"><span class="dot sim"></span>Loading data…</div>
+
+  <div style="border-top:1px solid var(--border);padding-top:12px;">
+    <div class="section-label">Compare</div>
+    <div class="compare-wrap">
+      <label class="compare-toggle" id="compareToggle">
+        <div class="toggle-track" id="toggleTrack"><div class="toggle-thumb"></div></div>
+        Overlay comparison
+      </label>
+    </div>
+    <div class="compare-list" id="compareList"></div>
+  </div>
+</aside>
+
+<!-- Main content -->
+<main class="content" aria-live="polite">
+  <div class="view-tabs">
+    <button class="view-tab active" data-view="analysis">Analysis</button>
+    <button class="view-tab" data-view="screener">Screener</button>
+  </div>
+  <div id="appContent">
+    <div class="loading-state"><div class="spinner"></div><span>Select a company</span></div>
+  </div>
+</main>
+
+</div>
+</div>
+
+<script>
+'use strict';
+
+/* ── API config ── */
+// Point this at your deployed backend (see backend/app.py). Falls back to
+// simulated data automatically if unreachable, so the dashboard still works
+// standalone for a quick preview.
+const API_BASE = window.MARKET_LENS_API || 'http://localhost:5000';
+
+/* ── Starter watchlist (editable — search adds any ticker, the X removes it) ── */
+let COMPANIES = [
+  { ticker:'AAPL', name:'Apple', sector:'Technology' },
+  { ticker:'MSFT', name:'Microsoft', sector:'Technology' },
+  { ticker:'GOOGL',name:'Alphabet', sector:'Technology' },
+  { ticker:'AMZN', name:'Amazon', sector:'Consumer' },
+  { ticker:'NVDA', name:'NVIDIA', sector:'Semiconductors' },
+  { ticker:'META', name:'Meta', sector:'Technology' },
+  { ticker:'TSLA', name:'Tesla', sector:'Automotive' },
+];
+// Simulation fallback params only — used when the API is unreachable
+const SIM_PARAMS = {
+  AAPL:{S0:175,mu:0.22,sigma:0.26,vol:75e6}, MSFT:{S0:380,mu:0.20,sigma:0.22,vol:22e6},
+  GOOGL:{S0:140,mu:0.18,sigma:0.25,vol:20e6}, AMZN:{S0:185,mu:0.25,sigma:0.30,vol:40e6},
+  NVDA:{S0:500,mu:0.60,sigma:0.50,vol:35e6}, META:{S0:355,mu:0.35,sigma:0.40,vol:18e6},
+  TSLA:{S0:240,mu:0.15,sigma:0.55,vol:85e6}, DEFAULT:{S0:150,mu:0.15,sigma:0.25,vol:10e6}
+};
+
+const TF_DAYS = { '1M':21, '6M':126, '1Y':252, '2Y':504, '3Y':756 };
+const SERIES_COLORS = ['#3b82f6','#10b981','#f59e0b','#a78bfa','#f43f5e'];
+
+/* ── GBM simulation (fallback only, when API is unreachable) ── */
+function genPrices(co, nDays) {
+  const p = SIM_PARAMS[co.ticker] || SIM_PARAMS.DEFAULT;
+  const seed = co.ticker.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  let s = seed;
+  const rng = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+  const boxMuller = () => Math.sqrt(-2*Math.log(rng()+1e-9))*Math.cos(2*Math.PI*rng());
+  const dt = 1/252;
+  const prices = [p.S0]; const vols = [];
+  for (let i=1; i<nDays; i++) {
+    const r = (p.mu - 0.5*p.sigma*p.sigma)*dt + p.sigma*Math.sqrt(dt)*boxMuller();
+    prices.push(prices[i-1]*Math.exp(r));
+    vols.push(Math.max(p.vol*0.3, p.vol*(0.7+0.6*rng())));
+  }
+  vols.push(vols[vols.length-1]||p.vol);
+  return { prices, vols };
+}
+
+function genDates(nDays) {
+  const end = new Date('2024-01-01'); const dates = [];
+  let d = new Date(end); d.setDate(d.getDate()-nDays);
+  while (d <= end) {
+    const day = d.getDay();
+    if (day!==0&&day!==6) dates.push(new Date(d));
+    d.setDate(d.getDate()+1);
+  }
+  return dates.slice(0, nDays);
+}
+
+function rollingMean(arr, w) {
+  return arr.map((_, i) => {
+    if (i < w-1) return null;
+    const s = arr.slice(i-w+1,i+1).reduce((a,b)=>a+b,0);
+    return s/w;
+  });
+}
+function rsi(closes, w=14) {
+  const out = new Array(closes.length).fill(50);
+  let gain=0, loss=0;
+  for (let i=1;i<closes.length;i++){
+    const d = closes[i]-closes[i-1];
+    gain = (gain*(w-1) + Math.max(d,0))/w;
+    loss = (loss*(w-1) + Math.max(-d,0))/w;
+    out[i] = loss===0 ? 100 : 100 - 100/(1+gain/loss);
+  }
+  return out;
+}
+function macdCalc(closes) {
+  const ema = (arr,span) => { const k=2/(span+1); let prev=arr[0]; return arr.map((v,i)=>i===0?v:(prev=v*k+prev*(1-k))); };
+  const f = ema(closes,12), s = ema(closes,26);
+  const line = f.map((v,i)=>v-s[i]);
+  const sig = ema(line,9);
+  return { line, sig, hist: line.map((v,i)=>v-sig[i]) };
+}
+function findCrosses(ma20, ma200) {
+  const golden=[], death=[];
+  for (let i=1;i<ma20.length;i++){
+    if(ma20[i]==null||ma200[i]==null||ma20[i-1]==null||ma200[i-1]==null) continue;
+    const prevDiff = ma20[i-1]-ma200[i-1], curDiff = ma20[i]-ma200[i];
+    if (prevDiff<=0 && curDiff>0) golden.push(i);
+    if (prevDiff>=0 && curDiff<0) death.push(i);
+  }
+  return { golden, death };
+}
+
+/* ── State ── */
+let activeTicker = 'AAPL';
+let activeTF = '6M';
+let compareMode = false;
+let compareTickers = [];
+let activeView = 'analysis';
+let mainChart = null, volChart = null, vol2Chart = null;
+let showMA20 = true, showMA200 = true, showBB = false;
+let searchQuery = '';
+let apiReachable = null; // null=unknown, true/false once checked
+let renderGen = 0;
+const liveCache = {}; // ticker -> {ts, data}
+const LIVE_TTL = 60000; // re-fetch from API at most once/minute per ticker client-side
+
+async function checkApiHealth() {
+  try {
+    const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(4000) });
+    apiReachable = res.ok;
+  } catch (e) { apiReachable = false; }
+  updateDataSrcLabel();
+}
+function updateDataSrcLabel() {
+  const el = document.getElementById('dataSrc');
+  if (apiReachable) el.innerHTML = '<span class="dot live"></span>Live via yfinance API — refreshes automatically';
+  else el.innerHTML = '<span class="dot sim"></span>API unreachable — showing simulated data (see setup steps)';
+}
+
+/* Fetch one ticker's data from the backend, with a short client cache */
+async function fetchLive(ticker) {
+  const hit = liveCache[ticker];
+  if (hit && Date.now()-hit.ts < LIVE_TTL) return hit.data;
+  const res = await fetch(`${API_BASE}/api/stock/${ticker}`, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error('bad response');
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  liveCache[ticker] = { ts: Date.now(), data };
+  return data;
+}
+
+/* Unified data getter: tries live API, falls back to simulated. Always async. */
+async function getSeries(ticker, nDays) {
+  const co = COMPANIES.find(c=>c.ticker===ticker) || { ticker, name:ticker, sector:'N/A' };
+  if (apiReachable !== false) {
+    try {
+      const d = await fetchLive(ticker);
+      apiReachable = true;
+      const n = d.close.length;
+      const start = Math.max(0, n-nDays);
+      const slice = (arr) => arr.slice(start);
+      return {
+        live:true, dates: slice(d.dates).map(s=>new Date(s)),
+        prices: slice(d.close), vols: slice(d.volume),
+        ma20given: slice(d.ma20), ma200given: slice(d.ma200),
+        bbU: slice(d.bbUpper), bbL: slice(d.bbLower), rsiGiven: slice(d.rsi14),
+      };
+    } catch (e) {
+      apiReachable = false; updateDataSrcLabel();
+    }
+  }
+  const { prices, vols } = genPrices(co, nDays);
+  const dates = genDates(nDays);
+  return { live:false, dates, prices, vols, ma20given:null, ma200given:null, bbU:null, bbL:null, rsiGiven:null };
+}
+
+/* ── Precompute latest prices (3Y) for sidebar + screener ── */
+const latestPrices = {};
+const screenerCache = {};
+async function computeScreenerRow(co) {
+  const s = await getSeries(co.ticker, 756);
+  const closes = s.prices;
+  const ma20 = s.ma20given || rollingMean(closes,20);
+  const ma200 = s.ma200given || rollingMean(closes,200);
+  const rsiArr = s.rsiGiven || rsi(closes);
+  const curRSI = rsiArr[rsiArr.length-1];
+  const curPrice = closes[closes.length-1];
+  const { golden, death } = findCrosses(ma20, ma200);
+  const lastGoldenIdx = golden.length ? golden[golden.length-1] : -1;
+  const lastDeathIdx = death.length ? death[death.length-1] : -1;
+  const inGoldenState = lastGoldenIdx > lastDeathIdx;
+  const mom = (closes[closes.length-1]-closes[Math.max(0,closes.length-21)])/closes[Math.max(0,closes.length-21)]*100;
+  let score = 0;
+  if (inGoldenState) score += 2;
+  if (curRSI > 45 && curRSI < 70) score += 1;
+  if (curRSI >= 70) score -= 1;
+  if (mom > 0) score += 1;
+  if (mom > 8) score += 1;
+  const daysSinceCross = inGoldenState ? closes.length - lastGoldenIdx : null;
+  if (daysSinceCross !== null && daysSinceCross < 15) score += 1;
+  latestPrices[co.ticker] = curPrice;
+  return { co, curPrice, curRSI, mom, inGoldenState, score, daysSinceCross };
+}
+
+/* ── Sidebar render ── */
+function renderSidebar() {
+  const list = document.getElementById('companyList');
+  const q = searchQuery.toLowerCase();
+  const filtered = q ? [] : COMPANIES; // while searching, show search results instead of watchlist
+  if (!q && !filtered.length) {
+    list.innerHTML = '<div class="no-results">Watchlist is empty — search to add a stock</div>';
+    return;
+  }
+  if (q) {
+    list.innerHTML = '<div class="search-loading">Searching…</div>';
+    runSearch(q);
+    return;
+  }
+  list.innerHTML = filtered.map(co => {
+    const p = latestPrices[co.ticker];
+    const active = co.ticker === activeTicker ? 'active' : '';
+    return `<div class="company-item ${active}" data-ticker="${co.ticker}" tabindex="0" role="button" aria-pressed="${!!active}" aria-label="${co.name} ${co.ticker}">
+      <div class="co-left">
+        <span class="ticker-badge">${co.ticker}</span>
+        <span class="co-name">${co.name}</span>
+      </div>
+      <span class="co-price">${p!==undefined ? '$'+p.toFixed(2) : '…'}</span>
+      <span class="remove-x" data-remove="${co.ticker}" title="Remove from watchlist">
+        <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5" fill="none"><path d="M1 1l8 8M9 1l-8 8"/></svg>
+      </span>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.company-item').forEach(el => {
+    el.addEventListener('click', e => { if(!e.target.closest('.remove-x')) setActive(el.dataset.ticker); });
+    el.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' ') setActive(el.dataset.ticker); });
+  });
+  list.querySelectorAll('.remove-x').forEach(x => {
+    x.addEventListener('click', e => {
+      e.stopPropagation();
+      const t = x.dataset.remove;
+      COMPANIES = COMPANIES.filter(c=>c.ticker!==t);
+      if (activeTicker===t && COMPANIES.length) setActive(COMPANIES[0].ticker);
+      else renderSidebar();
+    });
+  });
+
+  // fetch any missing prices in background, then refresh just this list
+  filtered.filter(co=>latestPrices[co.ticker]===undefined).forEach(co => {
+    computeScreenerRow(co).then(() => { if(!searchQuery) renderSidebar(); });
+  });
+
+  // compare list
+  const cList = document.getElementById('compareList');
+  const others = COMPANIES.filter(c => c.ticker !== activeTicker);
+  cList.innerHTML = others.map(co => `
+    <label class="compare-check">
+      <input type="checkbox" value="${co.ticker}" ${compareTickers.includes(co.ticker)?'checked':''}>
+      <span class="ticker-badge" style="font-size:10px;padding:1px 5px">${co.ticker}</span>
+      <span>${co.name}</span>
+    </label>`).join('');
+  cList.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      compareTickers = [...cList.querySelectorAll('input:checked')].map(el=>el.value);
+      renderContent();
+    });
+  });
+}
+
+/* ── Search (hits backend /api/search — any ticker, not a fixed list) ── */
+let searchDebounce = null;
+function runSearch(q) {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(async () => {
+    if (q !== searchQuery) return; // stale
+    const list = document.getElementById('companyList');
+    try {
+      const res = await fetch(`${API_BASE}/api/search?q=${encodeURIComponent(q)}`, { signal: AbortSignal.timeout(5000) });
+      const results = await res.json();
+      if (q !== searchQuery) return;
+      if (!Array.isArray(results) || !results.length) {
+        list.innerHTML = '<div class="no-results">No matches. Backend unreachable or no results — try an exact ticker.</div>';
+        return;
+      }
+      list.innerHTML = '<div class="search-results">' + results.map(r => `
+        <div class="company-item" data-add="${r.symbol}" tabindex="0" role="button">
+          <div class="co-left">
+            <span class="ticker-badge">${r.symbol}</span>
+            <span class="co-name">${r.name}</span>
+          </div>
+        </div>`).join('') + '</div>';
+      list.querySelectorAll('[data-add]').forEach(el => {
+        el.addEventListener('click', () => addToWatchlist(el.dataset.add, el.querySelector('.co-name').textContent));
+      });
+    } catch (e) {
+      list.innerHTML = '<div class="no-results">Search needs the backend API running (see setup steps). Try an exact ticker like AAPL directly.</div>';
+    }
+  }, 350);
+}
+function addToWatchlist(ticker, name) {
+  if (!COMPANIES.find(c=>c.ticker===ticker)) {
+    COMPANIES.push({ ticker, name, sector:'N/A' });
+  }
+  document.getElementById('searchInput').value = '';
+  searchQuery = '';
+  setActive(ticker);
+}
+
+/* ── Active / TF ── */
+function setActive(ticker) {
+  activeTicker = ticker;
+  compareTickers = compareTickers.filter(t=>t!==ticker);
+  renderSidebar();
+  renderContent();
+}
+
+function setTF(tf) {
+  activeTF = tf;
+  document.querySelectorAll('.tf-btn').forEach(b => b.classList.toggle('active', b.dataset.tf===tf));
+  renderContent();
+}
+
+/* ── Destroy charts ── */
+function destroyCharts() {
+  [mainChart, volChart, vol2Chart].forEach(c => { if(c) c.destroy(); });
+  mainChart=volChart=vol2Chart=null;
+}
+
+const TOOLTIPS = {
+  ma20: 'Moving average of the last 20 trading days. Tracks short-term momentum and reacts quickly to price changes.',
+  ma200: 'Moving average of the last 200 trading days. Represents the long-term trend; slow to react.',
+  golden: 'Golden cross: MA-20 crosses above MA-200. A classic bullish signal suggesting upward momentum is building.',
+  death: 'Death cross: MA-20 crosses below MA-200. A classic bearish signal suggesting downward momentum.',
+  rsi: 'Relative Strength Index (14-day). Above 70 = overbought, below 30 = oversold. 30-70 is neutral range.',
+  macd: 'MACD: difference between 12-day and 26-day EMA. Crossing above its signal line suggests bullish momentum.',
+  bb: 'Bollinger Bands: price channel 2 standard deviations around the 20-day average. Price near the upper band may be overbought; near the lower band, oversold.',
+  volume: 'Number of shares traded. Spikes often confirm the strength of a price move.',
+  totalReturn: 'Percentage price change from the start to the end of the selected timeframe.',
+  score: 'A simple composite score from trend (golden/death cross state), momentum, and RSI. Higher = more technically favorable setup. Not financial advice.'
+};
+function ic(key){ return `<span class="info-ic" tabindex="0">i<span class="tip">${TOOLTIPS[key]}</span></span>`; }
+
+/* ── Render content ── */
+async function renderAnalysis() {
+  destroyCharts();
+  const renderToken = ++renderGen; // cancel stale renders if user clicks elsewhere mid-fetch
+  const co = COMPANIES.find(c=>c.ticker===activeTicker) || { ticker:activeTicker, name:activeTicker, sector:'N/A' };
+  const nDays = TF_DAYS[activeTF];
+  document.getElementById('appContent').innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading '+co.ticker+'…</span></div>';
+  const S = await getSeries(activeTicker, nDays);
+  if (renderToken !== renderGen) return; // a newer render started; drop this one
+  const { dates, prices, vols } = S;
+
+  const cur = prices[prices.length-1];
+  const prev = prices[prices.length-2]||prices[0];
+  const delta = cur-prev;
+  const pct = (delta/prev*100);
+  const high = Math.max(...prices), low = Math.min(...prices);
+  const avgVol = vols.reduce((a,b)=>a+b,0)/vols.length;
+  const totalReturn = ((cur-prices[0])/prices[0]*100);
+
+  const up = delta>=0;
+  const labels = dates.map(d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'}));
+
+  // Compare data (fetched in parallel)
+  const compareData = await Promise.all((compareMode ? compareTickers : []).map(async (t,i) => {
+    const s2 = await getSeries(t, nDays);
+    return { ticker:t, prices:s2.prices, color: SERIES_COLORS[i+1] };
+  }));
+  if (renderToken !== renderGen) return;
+
+  // Indicators
+  const ma20 = S.ma20given || rollingMean(prices,20);
+  const ma200 = S.ma200given || rollingMean(prices,200);
+  const rsiArr = S.rsiGiven || rsi(prices);
+  const curRSI = rsiArr[rsiArr.length-1];
+  const { golden, death } = findCrosses(ma20, ma200);
+  const lastCrossIdx = Math.max(golden.length?golden[golden.length-1]:-1, death.length?death[death.length-1]:-1);
+  const lastCrossType = lastCrossIdx<0 ? null : (golden.includes(lastCrossIdx) ? 'golden':'death');
+
+  const el = document.getElementById('appContent');
+  el.innerHTML = `
+    <h2 class="sr-only" style="position:absolute;left:-9999px">Stock data for ${co.name} (${co.ticker}) over ${activeTF}</h2>
+    <div class="content-header">
+      <div class="co-headline">
+        <h1>${co.name} <span style="color:var(--text-3);font-weight:400;font-size:16px">${co.ticker}</span></h1>
+        <div class="tagline">${co.sector} · ${activeTF} view
+        ${lastCrossType==='golden' ? `<span class="cross-badge golden">▲ Golden cross ${ic('golden')}</span>` : ''}
+        ${lastCrossType==='death' ? `<span class="cross-badge death">▼ Death cross ${ic('death')}</span>` : ''}
+        </div>
+      </div>
+      <div class="price-block">
+        <div class="price-big">$${cur.toFixed(2)}</div>
+        <div class="price-delta ${up?'up':'dn'}">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
+            <path d="${up?'M5 1l4 8H1z':'M5 9L1 1h8z'}"/>
+          </svg>
+          ${up?'+':''}${delta.toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-label">Period high</div>
+        <div class="stat-val">$${high.toFixed(2)}</div>
+        <div class="stat-sub">${activeTF} range</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Period low</div>
+        <div class="stat-val">$${low.toFixed(2)}</div>
+        <div class="stat-sub">${activeTF} range</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total return${ic('totalReturn')}</div>
+        <div class="stat-val" style="color:${totalReturn>=0?'var(--green)':'var(--red)'}">
+          ${totalReturn>=0?'+':''}${totalReturn.toFixed(1)}%
+        </div>
+        <div class="stat-sub">Over ${activeTF}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">RSI (14)${ic('rsi')}</div>
+        <div class="stat-val" style="color:${curRSI>=70?'var(--red)':curRSI<=30?'var(--green)':'var(--text)'}">${curRSI.toFixed(0)}</div>
+        <div class="stat-sub">${curRSI>=70?'Overbought':curRSI<=30?'Oversold':'Neutral'}</div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-toolbar">
+        <div>
+          <div class="chart-title">Price history</div>
+          <div class="chart-meta">${dates[0].toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} – ${dates[dates.length-1].toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+        </div>
+        <div class="chart-legend" id="priceLegend"></div>
+      </div>
+      <div class="ma-controls" id="maControls">
+        <button class="ma-btn ${showMA20?'on':''}" data-ma="20">MA-20</button>
+        <button class="ma-btn ${showMA200?'on':''}" data-ma="200">MA-200</button>
+        <button class="ma-btn ${showBB?'on':''}" data-ma="bb">Bollinger</button>
+        ${ic('ma20')}${ic('bb')}
+      </div>
+      <div class="chart-body">
+        <div class="chart-wrap" style="height:280px">
+          <canvas id="mainChart" role="img" aria-label="Price history chart for ${co.name}"></canvas>
+        </div>
+      </div>
+      <div class="info-strip">
+        <div class="info-item"><span class="info-key">Open</span><span class="info-val">$${(prices[0]).toFixed(2)}</span></div>
+        <div class="info-item"><span class="info-key">Current</span><span class="info-val">$${cur.toFixed(2)}</span></div>
+        <div class="info-item"><span class="info-key">High</span><span class="info-val">$${high.toFixed(2)}</span></div>
+        <div class="info-item"><span class="info-key">Low</span><span class="info-val">$${low.toFixed(2)}</span></div>
+        <div class="info-item"><span class="info-key">Return</span><span class="info-val" style="color:${totalReturn>=0?'var(--green)':'var(--red)'}">${totalReturn>=0?'+':''}${totalReturn.toFixed(2)}%</span></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div class="chart-title">Volume — ${co.ticker}</div>
+        </div>
+        <div class="chart-body">
+          <div class="chart-wrap" style="height:160px">
+            <canvas id="volChart" role="img" aria-label="Trading volume chart for ${co.name}"></canvas>
+          </div>
+        </div>
+      </div>
+      ${compareMode && compareData.length ? `
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div class="chart-title">Volume comparison</div>
+        </div>
+        <div class="chart-body">
+          <div class="chart-wrap" style="height:160px">
+            <canvas id="vol2Chart" role="img" aria-label="Volume comparison chart"></canvas>
+          </div>
+        </div>
+      </div>` : `
+      <div class="chart-card">
+        <div class="chart-toolbar">
+          <div class="chart-title">Daily returns</div>
+        </div>
+        <div class="chart-body">
+          <div class="chart-wrap" style="height:160px">
+            <canvas id="vol2Chart" role="img" aria-label="Daily returns chart for ${co.name}"></canvas>
+          </div>
+        </div>
+      </div>`}
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-toolbar">
+        <div class="chart-title">RSI (14) &amp; MACD ${ic('macd')}</div>
+      </div>
+      <div class="chart-body">
+        <div class="chart-wrap" style="height:150px">
+          <canvas id="rsiChart" role="img" aria-label="RSI and MACD indicator chart for ${co.name}"></canvas>
+        </div>
+      </div>
+    </div>
+  `;
+
+  /* MA toggle buttons */
+  document.querySelectorAll('.ma-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.ma==='20') showMA20=!showMA20;
+      else if (btn.dataset.ma==='200') showMA200=!showMA200;
+      else showBB=!showBB;
+      renderAnalysis();
+    });
+  });
+
+  /* Build legend */
+  const legend = document.getElementById('priceLegend');
+  const allSeries = [{ticker:co.ticker, color:SERIES_COLORS[0]}, ...compareData];
+  legend.innerHTML = allSeries.map(s=>`
+    <span class="legend-item">
+      <span class="legend-dot" style="background:${s.color}"></span>${s.ticker}
+    </span>`).join('');
+  if(showMA20) legend.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>MA-20</span>`;
+  if(showMA200) legend.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span>MA-200</span>`;
+
+  /* ── Main price chart ── */
+  const skipN = Math.max(1, Math.floor(nDays/60));
+  const sparseLabels = labels.map((l,i)=>i%skipN===0?l:'');
+  const datasets = [
+    {
+      label: co.ticker, data: prices, borderColor: SERIES_COLORS[0],
+      backgroundColor: SERIES_COLORS[0]+'18', fill: compareData.length===0,
+      borderWidth:2, pointRadius:0, tension:0.2, order:2
+    },
+    ...compareData.map((cd,i)=>({
+      label:cd.ticker, data:cd.prices, borderColor:cd.color,
+      backgroundColor:'transparent', fill:false,
+      borderWidth:1.5, pointRadius:0, tension:0.2, order:3+i
+    }))
+  ];
+  if(showMA20) datasets.push({
+    label:'MA-20', data:rollingMean(prices,20), borderColor:'#10b981',
+    backgroundColor:'transparent', fill:false, borderWidth:1.5, pointRadius:0,
+    borderDash:[4,2], tension:0.2, order:1
+  });
+  if(showMA200 && nDays>=200) datasets.push({
+    label:'MA-200', data:ma200, borderColor:'#f59e0b',
+    backgroundColor:'transparent', fill:false, borderWidth:1.5, pointRadius:0,
+    borderDash:[6,3], tension:0.2, order:0
+  });
+  if(showBB) {
+    const bU = S.bbU || rollingMean(prices,20).map((m,i)=> m==null?null: m + 2*Math.sqrt(prices.slice(Math.max(0,i-19),i+1).reduce((a,b)=>a+(b-m)**2,0)/20));
+    const bL = S.bbL || rollingMean(prices,20).map((m,i)=> m==null?null: m - 2*Math.sqrt(prices.slice(Math.max(0,i-19),i+1).reduce((a,b)=>a+(b-m)**2,0)/20));
+    datasets.push({ label:'BB upper', data:bU, borderColor:'rgba(139,147,168,0.5)', backgroundColor:'transparent', fill:false, borderWidth:1, pointRadius:0, borderDash:[2,2], tension:0.2, order:4 });
+    datasets.push({ label:'BB lower', data:bL, borderColor:'rgba(139,147,168,0.5)', backgroundColor:'transparent', fill:false, borderWidth:1, pointRadius:0, borderDash:[2,2], tension:0.2, order:4 });
+  }
+
+  const crossPlugin = {
+    id:'crossMarkers',
+    afterDraw(chart) {
+      if(!showMA20 || !showMA200) return;
+      const { ctx, chartArea, scales } = chart;
+      [[golden,'#f59e0b'],[death,'#ef4444']].forEach(([arr,color])=>{
+        arr.forEach(idx=>{
+          const x = scales.x.getPixelForValue(idx);
+          if (x<chartArea.left || x>chartArea.right) return;
+          ctx.save();
+          ctx.strokeStyle = color; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+          ctx.beginPath(); ctx.moveTo(x,chartArea.top); ctx.lineTo(x,chartArea.bottom); ctx.stroke();
+          ctx.restore();
+        });
+      });
+    }
+  };
+
+  mainChart = new Chart(document.getElementById('mainChart'), {
+    type:'line',
+    data:{ labels, datasets },
+    plugins:[crossPlugin],
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      interaction:{ intersect:false, mode:'index' },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{
+          backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)',
+          borderWidth:1, titleColor:'#8b93a8', bodyColor:'#f0f4ff',
+          padding:10, cornerRadius:8,
+          callbacks:{
+            label: ctx=>`  ${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`
+          }
+        }
+      },
+      scales:{
+        x:{ ticks:{ color:'#4a5568', maxRotation:0, font:{size:10},
+              callback:(v,i)=>sparseLabels[i]||null },
+            grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+            border:{ display:false } },
+        y:{ ticks:{ color:'#4a5568', font:{size:10}, callback:v=>'$'+v.toFixed(0) },
+            grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+            border:{ display:false }, position:'right' }
+      }
+    }
+  });
+
+  /* ── Volume chart ── */
+  const volColors = vols.map((_,i) => prices[i]>=(prices[i-1]||prices[i]) ? '#10b98150':'#ef444450');
+  volChart = new Chart(document.getElementById('volChart'),{
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Volume', data:vols.map(v=>+(v/1e6).toFixed(1)),
+      backgroundColor:volColors, borderWidth:0 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{ legend:{display:false}, tooltip:{
+        backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)',
+        borderWidth:1, titleColor:'#8b93a8', bodyColor:'#f0f4ff', padding:8, cornerRadius:6,
+        callbacks:{ label:ctx=>`  ${ctx.parsed.y.toFixed(1)}M shares` }
+      }},
+      scales:{
+        x:{ ticks:{display:false}, grid:{display:false}, border:{display:false} },
+        y:{ ticks:{ color:'#4a5568', font:{size:10}, callback:v=>v+'M' },
+            grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+            border:{ display:false }, position:'right' }
+      }
+    }
+  });
+
+  /* ── Second bottom chart ── */
+  const cvs2 = document.getElementById('vol2Chart');
+  if(compareMode && compareData.length) {
+    // Volume comparison bars
+    const skip2 = Math.max(1, Math.floor(nDays/30));
+    const sparseIdx = Array.from({length:nDays},(_,i)=>i).filter(i=>i%skip2===0);
+    const volDs = [{
+      label:co.ticker, data:sparseIdx.map(i=>+(vols[i]/1e6).toFixed(1)),
+      backgroundColor:SERIES_COLORS[0]+'80', borderWidth:0
+    }, ...compareData.map((cd,i)=>{
+      const {vols:v2} = genPrices(COMPANIES.find(c=>c.ticker===cd.ticker), nDays);
+      return { label:cd.ticker, data:sparseIdx.map(i=>+(v2[i]/1e6).toFixed(1)),
+        backgroundColor:cd.color+'80', borderWidth:0 };
+    })];
+    vol2Chart = new Chart(cvs2,{
+      type:'bar',
+      data:{ labels:sparseIdx.map(i=>labels[i]), datasets:volDs },
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:false,
+        plugins:{ legend:{ display:true, position:'bottom', labels:{color:'#8b93a8',font:{size:10},boxWidth:10,boxHeight:3} },
+          tooltip:{ backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)',
+            borderWidth:1, titleColor:'#8b93a8', bodyColor:'#f0f4ff', padding:8, cornerRadius:6,
+            callbacks:{ label:ctx=>`  ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}M` } }
+        },
+        scales:{
+          x:{ ticks:{display:false}, grid:{display:false}, border:{display:false} },
+          y:{ ticks:{ color:'#4a5568', font:{size:10}, callback:v=>v+'M' },
+              grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+              border:{display:false}, position:'right' }
+        }
+      }
+    });
+  } else {
+    // Daily returns histogram
+    const returns = prices.map((p,i)=>i===0?0:+((p-prices[i-1])/prices[i-1]*100).toFixed(2));
+    const retColors = returns.map(r=>r>=0?'#10b98170':'#ef444470');
+    vol2Chart = new Chart(cvs2,{
+      type:'bar',
+      data:{ labels, datasets:[{ label:'Return %', data:returns, backgroundColor:retColors, borderWidth:0 }] },
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:false,
+        plugins:{ legend:{display:false}, tooltip:{
+          backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)',
+          borderWidth:1, titleColor:'#8b93a8', bodyColor:'#f0f4ff', padding:8, cornerRadius:6,
+          callbacks:{ label:ctx=>`  ${ctx.parsed.y>=0?'+':''}${ctx.parsed.y.toFixed(2)}%` }
+        }},
+        scales:{
+          x:{ ticks:{display:false}, grid:{display:false}, border:{display:false} },
+          y:{ ticks:{ color:'#4a5568', font:{size:10}, callback:v=>(v>=0?'+':'')+v+'%' },
+              grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+              border:{display:false}, position:'right' }
+        }
+      }
+    });
+  }
+
+  /* ── RSI / MACD chart ── */
+  const md = macdCalc(prices);
+  new Chart(document.getElementById('rsiChart'), {
+    type:'line',
+    data:{ labels, datasets:[
+      { label:'RSI', data:rsiArr, borderColor:'#a78bfa', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.2, yAxisID:'rsi' },
+      { label:'MACD', data:md.line, borderColor:'#3b82f6', backgroundColor:'transparent', borderWidth:1.2, pointRadius:0, tension:0.2, yAxisID:'macd' },
+      { label:'Signal', data:md.sig, borderColor:'#f59e0b', backgroundColor:'transparent', borderWidth:1.2, pointRadius:0, borderDash:[3,2], tension:0.2, yAxisID:'macd' }
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      interaction:{ intersect:false, mode:'index' },
+      plugins:{
+        legend:{ display:true, position:'top', align:'end', labels:{color:'#8b93a8',font:{size:10},boxWidth:10,boxHeight:3} },
+        tooltip:{ backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
+          titleColor:'#8b93a8', bodyColor:'#f0f4ff', padding:8, cornerRadius:6 }
+      },
+      scales:{
+        x:{ ticks:{display:false}, grid:{display:false}, border:{display:false} },
+        rsi:{ position:'left', min:0, max:100, ticks:{color:'#4a5568',font:{size:9}}, grid:{color:'rgba(255,255,255,0.04)',drawBorder:false}, border:{display:false} },
+        macd:{ position:'right', ticks:{color:'#4a5568',font:{size:9}}, grid:{display:false}, border:{display:false} }
+      }
+    }
+  });
+}
+
+/* ── Screener view (ranks your current watchlist — "all stocks" live-ranking
+   isn't practical client-side, so add candidates to the watchlist via search
+   first, then screen them) ── */
+async function renderScreener() {
+  destroyCharts();
+  const renderToken = ++renderGen;
+  const el = document.getElementById('appContent');
+  el.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Scoring watchlist…</span></div>';
+  if (!COMPANIES.length) {
+    el.innerHTML = '<div class="no-results" style="padding:40px 0">Your watchlist is empty. Search and add stocks first, then come back to screen them.</div>';
+    return;
+  }
+  const rows = (await Promise.all(COMPANIES.map(computeScreenerRow))).sort((a,b)=>b.score-a.score);
+  if (renderToken !== renderGen) return;
+  el.innerHTML = `
+    <h2 class="sr-only" style="position:absolute;left:-9999px">Stock screener ranking companies by technical score</h2>
+    <div class="content-header">
+      <div class="co-headline">
+        <h1>Stock screener</h1>
+        <div class="tagline">Ranked by trend, momentum and RSI ${ic('score')}</div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-body" style="overflow-x:auto;padding:0">
+        <table class="screener-table">
+          <thead><tr>
+            <th>Company</th><th>Price</th><th>RSI (14)</th><th>1M momentum</th>
+            <th>MA state</th><th>Signal</th>
+          </tr></thead>
+          <tbody>
+          ${rows.map(r => {
+            const badge = r.score>=4 ? 'strong' : r.score>=2 ? 'watch' : 'weak';
+            const label = r.score>=4 ? 'Promising' : r.score>=2 ? 'Watch' : 'Weak';
+            return `<tr data-ticker="${r.co.ticker}">
+              <td><span class="ticker-badge">${r.co.ticker}</span> ${r.co.name}</td>
+              <td style="font-family:'JetBrains Mono',monospace">$${r.curPrice.toFixed(2)}</td>
+              <td style="color:${r.curRSI>=70?'var(--red)':r.curRSI<=30?'var(--green)':'var(--text)'}">${r.curRSI.toFixed(0)}</td>
+              <td style="color:${r.mom>=0?'var(--green)':'var(--red)'}">${r.mom>=0?'+':''}${r.mom.toFixed(1)}%</td>
+              <td>${r.inGoldenState ? `<span class="cross-badge golden">▲ Golden${r.daysSinceCross<15?' · new':''}</span>` : `<span class="cross-badge death">▼ Death</span>`}</td>
+              <td><span class="score-pill ${badge}">${label}</span></td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--text-3);margin-top:12px">
+      Screener logic combines MA-20/MA-200 trend state, 1-month price momentum, and RSI positioning into a simple composite score.
+      This is an educational heuristic, not investment advice.
+    </p>
+  `;
+  el.querySelectorAll('tr[data-ticker]').forEach(tr => {
+    tr.addEventListener('click', () => {
+      setActive(tr.dataset.ticker);
+      setView('analysis');
+    });
+  });
+}
+
+async function renderContent() {
+  if (activeView==='screener') await renderScreener();
+  else await renderAnalysis();
+}
+
+function setView(view) {
+  activeView = view;
+  document.querySelectorAll('.view-tab').forEach(t=>t.classList.toggle('active', t.dataset.view===view));
+  renderContent();
+}
+
+/* ── Init ── */
+document.querySelectorAll('.view-tab').forEach(t => t.addEventListener('click', ()=>setView(t.dataset.view)));
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  searchQuery = e.target.value.trim();
+  renderSidebar();
+});
+
+document.getElementById('tfStrip').addEventListener('click', e => {
+  if(e.target.dataset.tf) setTF(e.target.dataset.tf);
+});
+
+document.getElementById('compareToggle').addEventListener('click', () => {
+  compareMode = !compareMode;
+  document.getElementById('toggleTrack').classList.toggle('on', compareMode);
+  document.getElementById('compareList').classList.toggle('show', compareMode);
+  if(!compareMode) compareTickers = [];
+  renderContent();
+});
+
+checkApiHealth().then(() => { renderSidebar(); renderContent(); });
+</script>
+</body>
+</html>
