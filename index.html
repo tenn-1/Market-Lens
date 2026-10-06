@@ -312,7 +312,7 @@ body {
 <!-- Topbar -->
 <header class="topbar">
   <div class="logo"><span class="logo-dot"></span> Market Lens</div>
-  <div style="font-size:12px;color:var(--text-3);">Simulated data · Educational use</div>
+  <div style="font-size:12px;color:var(--text-3);">Educational use</div>
 </header>
 
 <div class="main">
@@ -491,8 +491,8 @@ async function checkApiHealth() {
 }
 function updateDataSrcLabel() {
   const el = document.getElementById('dataSrc');
-  if (apiReachable) el.innerHTML = '<span class="dot live"></span>Live via yfinance API — refreshes automatically';
-  else el.innerHTML = '<span class="dot sim"></span>API unreachable — showing simulated data (see setup steps)';
+  if (apiReachable) el.innerHTML = `<span class="dot live"></span>Live via yfinance API — refreshes automatically${ic('live')}`;
+  else el.innerHTML = `<span class="dot sim"></span>API unreachable — showing simulated data ${ic('live')}`;
 }
 
 /* Fetch one ticker's data from the backend, with a short client cache */
@@ -699,7 +699,8 @@ const TOOLTIPS = {
   bb: 'Bollinger Bands: price channel 2 standard deviations around the 20-day average. Price near the upper band may be overbought; near the lower band, oversold.',
   volume: 'Number of shares traded. Spikes often confirm the strength of a price move.',
   totalReturn: 'Percentage price change from the start to the end of the selected timeframe.',
-  score: 'A simple composite score from trend (golden/death cross state), momentum, and RSI. Higher = more technically favorable setup. Not financial advice.'
+  score: 'A simple composite score from trend (golden/death cross state), momentum, and RSI. Higher = more technically favorable setup. Not financial advice.',
+  live: 'Real-time price data. Falls back on simulated data if the API is unavailable.'
 };
 function ic(key){ return `<span class="info-ic" tabindex="0" data-tip="${TOOLTIPS[key].replace(/"/g,'&quot;')}">i</span>`; }
 
