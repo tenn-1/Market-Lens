@@ -10,7 +10,7 @@
 <script>
   // Set this to your deployed backend URL before pushing to GitHub Pages, e.g.
   // window.MARKET_LENS_API = 'https://your-app.onrender.com';
-  window.MARKET_LENS_API = 'http://localhost:5000';
+  window.MARKET_LENS_API = 'https://market-lens-pgac.onrender.com';
 </script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -377,7 +377,10 @@ body {
 // Point this at your deployed backend (see backend/app.py). Falls back to
 // simulated data automatically if unreachable, so the dashboard still works
 // standalone for a quick preview.
-const API_BASE = window.MARKET_LENS_API || 'https://market-lens-pgac.onrender.com/';
+// Trailing slash is stripped automatically so a URL like
+// 'https://your-app.onrender.com/' doesn't produce double-slash 404s
+// (e.g. '//api/health') when endpoints are appended.
+const API_BASE = (window.MARKET_LENS_API || 'http://localhost:5000').replace(/\/+$/, '');
 
 /* ── Starter watchlist (editable — search adds any ticker, the X removes it) ── */
 let COMPANIES = [
