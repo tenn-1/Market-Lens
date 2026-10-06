@@ -240,13 +240,15 @@ body {
   width:13px; height:13px; border-radius:50%; border:1px solid var(--text-3);
   color:var(--text-3); font-size:9px; cursor:help; position:relative; margin-left:4px;
 }
-.info-ic .tip {
-  display:none; position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
-  background:#1a2235; color:var(--text); font-size:11px; font-weight:400;
-  padding:8px 10px; border-radius:7px; border:1px solid var(--border-strong);
-  width:190px; line-height:1.4; z-index:50; box-shadow:0 6px 20px rgba(0,0,0,0.4);
+/* Tooltip is a single shared element appended to <body> and positioned with
+   JS on hover/focus, so it can never be clipped by a chart-card's
+   overflow:hidden (needed elsewhere for rounded chart corners). */
+#globalTip {
+  display:none; position:fixed; background:#1a2235; color:var(--text);
+  font-size:11px; font-weight:400; padding:8px 10px; border-radius:7px;
+  border:1px solid var(--border-strong); width:190px; line-height:1.4;
+  z-index:9999; box-shadow:0 6px 20px rgba(0,0,0,0.45); pointer-events:none;
 }
-.info-ic:hover .tip, .info-ic:focus .tip { display:block; }
 
 /* ── Tabs ── */
 .view-tabs { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid var(--border); }
@@ -353,6 +355,8 @@ body {
 </aside>
 
 <!-- Main content -->
+<div id="globalTip" role="tooltip"></div>
+
 <main class="content" aria-live="polite">
   <div class="view-tabs">
     <button class="view-tab active" data-view="analysis">Analysis</button>
@@ -415,7 +419,7 @@ function genPrices(co, nDays) {
 }
 
 function genDates(nDays) {
-  const end = new Date('2024-01-01'); const dates = [];
+  const end = new Date(); const dates = [];
   let d = new Date(end); d.setDate(d.getDate()-nDays);
   while (d <= end) {
     const day = d.getDay();
@@ -500,13 +504,18 @@ async function fetchLive(ticker) {
   return data;
 }
 
-/* Unified data getter: tries live API, falls back to simulated. Always async. */
+/* Unified data getter: tries live API, falls back to simulated. Always async.
+   Retries the API every RETRY_COOLDOWN ms instead of giving up permanently,
+   so if you fix/restart the backend mid-session it recovers without a reload. */
+const RETRY_COOLDOWN = 15000;
+let lastApiFailAt = 0;
 async function getSeries(ticker, nDays) {
   const co = COMPANIES.find(c=>c.ticker===ticker) || { ticker, name:ticker, sector:'N/A' };
-  if (apiReachable !== false) {
+  const shouldTry = apiReachable !== false || (Date.now() - lastApiFailAt > RETRY_COOLDOWN);
+  if (shouldTry) {
     try {
       const d = await fetchLive(ticker);
-      apiReachable = true;
+      apiReachable = true; updateDataSrcLabel();
       const n = d.close.length;
       const start = Math.max(0, n-nDays);
       const slice = (arr) => arr.slice(start);
@@ -517,7 +526,7 @@ async function getSeries(ticker, nDays) {
         bbU: slice(d.bbUpper), bbL: slice(d.bbLower), rsiGiven: slice(d.rsi14),
       };
     } catch (e) {
-      apiReachable = false; updateDataSrcLabel();
+      apiReachable = false; lastApiFailAt = Date.now(); updateDataSrcLabel();
     }
   }
   const { prices, vols } = genPrices(co, nDays);
@@ -689,7 +698,32 @@ const TOOLTIPS = {
   totalReturn: 'Percentage price change from the start to the end of the selected timeframe.',
   score: 'A simple composite score from trend (golden/death cross state), momentum, and RSI. Higher = more technically favorable setup. Not financial advice.'
 };
-function ic(key){ return `<span class="info-ic" tabindex="0">i<span class="tip">${TOOLTIPS[key]}</span></span>`; }
+function ic(key){ return `<span class="info-ic" tabindex="0" data-tip="${TOOLTIPS[key].replace(/"/g,'&quot;')}">i</span>`; }
+
+/* Global tooltip: positioned in viewport coordinates so it's never clipped
+   by a chart-card's overflow:hidden. Delegated listener covers tooltips
+   added later by re-renders. */
+function initTooltips() {
+  const tip = document.getElementById('globalTip');
+  function show(el) {
+    tip.textContent = el.dataset.tip;
+    tip.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    const tw = 190;
+    let left = r.left + r.width/2 - tw/2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+    let top = r.top - tip.offsetHeight - 8;
+    if (top < 4) top = r.bottom + 8; // flip below if no room above
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  function hide() { tip.style.display = 'none'; }
+  document.addEventListener('mouseover', e => { const el = e.target.closest('.info-ic'); if (el) show(el); });
+  document.addEventListener('mouseout', e => { if (e.target.closest('.info-ic')) hide(); });
+  document.addEventListener('focusin', e => { const el = e.target.closest('.info-ic'); if (el) show(el); });
+  document.addEventListener('focusout', e => { if (e.target.closest('.info-ic')) hide(); });
+  window.addEventListener('scroll', hide, true);
+}
 
 /* ── Render content ── */
 async function renderAnalysis() {
@@ -1144,6 +1178,7 @@ document.getElementById('compareToggle').addEventListener('click', () => {
   renderContent();
 });
 
+initTooltips();
 checkApiHealth().then(() => { renderSidebar(); renderContent(); });
 </script>
 </body>
