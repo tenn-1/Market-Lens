@@ -45,6 +45,14 @@ def macd(series, fast=12, slow=26, signal=9):
     return line, sig
 
 
+def clean(series):
+    """Convert a pandas Series to a plain list with real Python None in place
+    of NaN. pandas' .where(cond, None) does NOT work for this on float
+    columns -- it silently coerces None back to NaN, which then serializes
+    as the invalid JSON token `NaN` and breaks the browser's JSON.parse()."""
+    return [None if pd.isna(v) else float(v) for v in series]
+
+
 def find_crosses(ma20, ma200):
     diff = (ma20 - ma200).dropna()
     sign = np.sign(diff)
@@ -119,13 +127,13 @@ def stock(ticker):
             'dates': df.index.strftime('%Y-%m-%d').tolist(),
             'close': close.round(2).tolist(),
             'volume': df['Volume'].astype(int).tolist(),
-            'ma20': ma20.round(2).where(ma20.notna(), None).tolist(),
-            'ma200': ma200.round(2).where(ma200.notna(), None).tolist(),
-            'rsi14': rsi14.round(1).tolist(),
-            'macd': macd_line.round(3).tolist(),
-            'macdSignal': macd_sig.round(3).tolist(),
-            'bbUpper': (bb_mid + 2 * bb_std).round(2).where(bb_mid.notna(), None).tolist(),
-            'bbLower': (bb_mid - 2 * bb_std).round(2).where(bb_mid.notna(), None).tolist(),
+            'ma20': clean(ma20.round(2)),
+            'ma200': clean(ma200.round(2)),
+            'rsi14': clean(rsi14.round(1)),
+            'macd': clean(macd_line.round(3)),
+            'macdSignal': clean(macd_sig.round(3)),
+            'bbUpper': clean((bb_mid + 2 * bb_std).round(2)),
+            'bbLower': clean((bb_mid - 2 * bb_std).round(2)),
             'goldenCrosses': [d.strftime('%Y-%m-%d') for d in golden],
             'deathCrosses': [d.strftime('%Y-%m-%d') for d in death],
             'fetchedAt': int(time.time()),
