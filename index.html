@@ -313,7 +313,10 @@ body { background: var(--bg); }
 .ind-opt.on { color:var(--text); border-color:var(--accent); background:var(--accent-dim); }
 .ind-box { width:12px; height:12px; border:1px solid var(--text-3); border-radius:3px; flex-shrink:0; }
 .ind-opt.on .ind-box { background:var(--accent); border-color:var(--accent); }
-.ind-opt .info-ic { position:absolute; top:-7px; right:8px; margin:0; background:var(--surface2); }
+.ind-opt .info-ic { margin-left:auto; flex-shrink:0; }
+.ind-opt.disabled { opacity:0.38; cursor:not-allowed; }
+.ind-opt.disabled:hover { border-color:var(--border); color:var(--text-2); }
+.ind-note { font-size:10px; color:var(--text-3); }
 
 @media (max-width: 768px) {
   .main { grid-template-columns: 1fr; }
@@ -349,10 +352,11 @@ body { background: var(--bg); }
   <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:4px;">
     <div class="section-label">Timeframe</div>
     <div class="timeframe-strip" id="tfStrip">
-      <button class="tf-btn" data-tf="1M">1M</button>
-      <button class="tf-btn active" data-tf="6M">6M</button>
+      <button class="tf-btn" data-tf="1D">1D</button>
+      <button class="tf-btn" data-tf="3D">3D</button>
+      <button class="tf-btn" data-tf="1W">1W</button>
+      <button class="tf-btn active" data-tf="1M">1M</button>
       <button class="tf-btn" data-tf="1Y">1Y</button>
-      <button class="tf-btn" data-tf="2Y">2Y</button>
       <button class="tf-btn" data-tf="3Y">3Y</button>
     </div>
   </div>
@@ -417,7 +421,7 @@ const SIM_PARAMS = {
   TSLA:{S0:320,mu:0.15,sigma:0.55,vol:85e6}, DEFAULT:{S0:150,mu:0.15,sigma:0.25,vol:10e6}
 };
 
-const TF_DAYS = { '1M':21, '6M':126, '1Y':252, '2Y':504, '3Y':756 };
+const TF_DAYS = { '1D':1, '3D':3, '1W':5, '1M':21, '1Y':252, '3Y':756 };
 const SERIES_COLORS = ['#38bdf8','#34d399','#c084fc','#f472b6','#fb923c'];
 
 /* ── GBM simulation (fallback only, when API is unreachable) ── */
@@ -487,7 +491,7 @@ function findCrosses(ma20, ma200) {
 
 /* ── State ── */
 let activeTicker = 'AAPL';
-let activeTF = '6M';
+let activeTF = '1M';
 let compareMode = false;
 let compareTickers = [];
 let activeView = 'analysis';
@@ -505,12 +509,13 @@ const IND_MENU = [
 const isOn = k => k==='ma20' ? showMA20 : k==='ma200' ? showMA200 : k==='bb' ? showBB : IND[k];
 const flipInd = k => { if (k==='ma20') showMA20=!showMA20; else if (k==='ma200') showMA200=!showMA200; else if (k==='bb') showBB=!showBB; else IND[k]=!IND[k]; };
 function indMenuHTML() {
-  const n = Object.values(IND).filter(Boolean).length + [showMA20,showMA200,showBB].filter(Boolean).length;
+  const intra = activeTF === '1D', dis = k => intra && (k==='ma20' || k==='ma200');
+  const n = Object.values(IND).filter(Boolean).length + [['ma20',showMA20],['ma200',showMA200],['bb',showBB]].filter(([k,v]) => v && !dis(k)).length;
   return `<div class="ind-menu ${indMenuOpen?'open':''}" id="indMenu">
     <button class="ind-trigger" id="indTrigger">Indicators <span class="ind-count">${n}</span> ▾</button>
     <div class="ind-panel">${IND_MENU.map(([g,items]) => `<div class="ind-group">${g}</div>` + items.map(([k,label]) => `
-      <div class="ind-opt ${isOn(k)?'on':''}" data-ind="${k}" data-tip="${TOOLTIPS[k].replace(/"/g,'&quot;')}" tabindex="0" role="checkbox" aria-checked="${!!isOn(k)}">
-        <span class="ind-box"></span><span>${label}</span><span class="info-ic" aria-hidden="true">i</span>
+      <div class="ind-opt ${isOn(k)&&!dis(k)?'on':''} ${dis(k)?'disabled':''}" data-ind="${k}" tabindex="0" role="checkbox" aria-checked="${!!isOn(k)&&!dis(k)}" aria-disabled="${dis(k)}">
+        <span class="ind-box"></span><span>${label}</span>${dis(k)?'<span class="ind-note">daily only</span>':''}<span class="info-ic" tabindex="0" data-tip="${TOOLTIPS[k].replace(/"/g,'&quot;')}">i</span>
       </div>`).join('')).join('')}</div></div>`;
 }
 let searchQuery = '';
@@ -556,9 +561,35 @@ async function fetchLive(ticker) {
 /* Unified data getter: tries live API, falls back to simulated. Always async.
    Retries the API every RETRY_COOLDOWN ms instead of giving up permanently,
    so if you fix/restart the backend mid-session it recovers without a reload. */
+const intraCache = {};
+async function getSeriesIntraday(ticker) {
+  const co = COMPANIES.find(c=>c.ticker===ticker) || { ticker, name:ticker, sector:'N/A' };
+  try {
+    let hit = intraCache[ticker];
+    if (!hit || Date.now()-hit.ts > 55000) {
+      const res = await fetch(`${API_BASE}/api/intraday/${ticker}`, { signal: AbortSignal.timeout(60000) });
+      const d = await res.json();
+      if (!res.ok || d.error) throw new Error(d.error || 'bad response');
+      hit = intraCache[ticker] = { ts: Date.now(), d };
+    }
+    const d = hit.d, n = d.sessionBars, last = a => a.slice(a.length - n);
+    apiReachable = true; updateDataSrcLabel();
+    return { live:true, intraday:true, dates:last(d.ts).map(t=>new Date(t)), labels:last(d.labels),
+      prices:last(d.close), vols:last(d.volume), ma20given:null, ma200given:null, bbU:null, bbL:null,
+      rsiGiven:last(d.rsi14), full:{ c:d.close, h:d.high, l:d.low } };
+  } catch (e) {
+    apiReachable = false; lastApiFailAt = Date.now(); updateDataSrcLabel();
+    const { prices, vols } = genPrices(co, 78);
+    const t0 = new Date(); t0.setHours(9,30,0,0);
+    const dates = prices.map((_,i) => new Date(t0.getTime()+i*300000));
+    return { live:false, intraday:true, dates, labels:dates.map(d=>d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false})),
+      prices, vols, ma20given:null, ma200given:null, bbU:null, bbL:null, rsiGiven:null };
+  }
+}
 const RETRY_COOLDOWN = 15000;
 let lastApiFailAt = 0;
 async function getSeries(ticker, nDays) {
+  if (nDays === 1) return getSeriesIntraday(ticker);
   const co = COMPANIES.find(c=>c.ticker===ticker) || { ticker, name:ticker, sector:'N/A' };
   const shouldTry = apiReachable !== false || (Date.now() - lastApiFailAt > RETRY_COOLDOWN);
   if (shouldTry) {
@@ -854,7 +885,7 @@ async function renderAnalysis() {
   const totalReturn = ((cur-prices[0])/prices[0]*100);
 
   const up = delta>=0;
-  const labels = dates.map(d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'}));
+  const labels = S.labels || dates.map(d => d.toLocaleDateString('en-US',{month:'short',day:'numeric'}));
 
   // Compare data (fetched in parallel)
   const compareData = await Promise.all((compareMode ? compareTickers : []).map(async (t,i) => {
@@ -985,8 +1016,8 @@ async function renderAnalysis() {
   document.getElementById('indTrigger').addEventListener('click', e => { e.stopPropagation(); indMenuOpen = !indMenuOpen; menu.classList.toggle('open', indMenuOpen); });
   menu.querySelectorAll('.ind-opt').forEach(o => {
     const go = () => { flipInd(o.dataset.ind); renderAnalysis(); };
-    o.addEventListener('click', go);
-    o.addEventListener('keydown', e => { if (e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
+    o.addEventListener('click', e => { if (e.target.closest('.info-ic') || o.classList.contains('disabled')) return; go(); });
+    o.addEventListener('keydown', e => { if (e.target.closest('.info-ic') || o.classList.contains('disabled')) return; if (e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
   });
 
   /* Build legend */
@@ -996,8 +1027,8 @@ async function renderAnalysis() {
     <span class="legend-item">
       <span class="legend-dot" style="background:${s.color}"></span>${s.ticker}
     </span>`).join('');
-  if(showMA20) legend.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>MA-20</span>`;
-  if(showMA200) legend.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span>MA-200</span>`;
+  if(showMA20 && !S.intraday) legend.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>MA-20</span>`;
+  if(showMA200 && !S.intraday) legend.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span>MA-200</span>`;
 
   const lg = (c,t) => `<span class="legend-item"><span class="legend-dot" style="background:${c}"></span>${t}</span>`;
   if (showBB) legend.innerHTML += lg('rgba(156,163,175,0.7)','Bollinger');
@@ -1020,7 +1051,7 @@ async function renderAnalysis() {
       borderWidth:1.5, pointRadius:0, tension:0.2, order:3+i
     }))
   ];
-  if(showMA20) datasets.push({
+  if(showMA20 && !S.intraday) datasets.push({
     label:'MA-20', data:rollingMean(prices,20), borderColor:'#10b981',
     backgroundColor:'transparent', fill:false, borderWidth:1.5, pointRadius:0,
     borderDash:[4,2], tension:0.2, order:1

@@ -174,6 +174,40 @@ def quotes():
         return jsonify({'error': str(e)}), 502
 
 
+@app.route('/api/intraday/<ticker>')
+def intraday(ticker):
+    """Latest trading session in 5-minute bars (plus 4 prior days for indicator warm-up)."""
+    ticker = ticker.upper()
+    key = f'intra:{ticker}'
+    hit = _cache.get(key)
+    if hit and time.time() - hit[0] < 60:
+        return jsonify(hit[1])
+    try:
+        df = yf.Ticker(ticker).history(period='5d', interval='5m', auto_adjust=True)
+        if df.empty:
+            return jsonify({'error': f'No intraday data for {ticker}'}), 404
+        last_day = df.index[-1].date()
+        session = sum(1 for d in df.index.date if d == last_day)
+        close = df['Close']
+        payload = {
+            'ticker': ticker,
+            'ts': [t.isoformat() for t in df.index],
+            'labels': df.index.strftime('%H:%M').tolist(),
+            'close': clean(close.round(2)),
+            'high': clean(df['High'].round(2)),
+            'low': clean(df['Low'].round(2)),
+            'volume': df['Volume'].astype(int).tolist(),
+            'rsi14': clean(rsi(close).round(1)),
+            'sessionBars': session,
+            'sessionDate': str(last_day),
+            'fetchedAt': int(time.time()),
+        }
+        _cache[key] = (time.time(), payload)
+        return jsonify(payload)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+
+
 @app.route('/')
 def root():
     return jsonify({
