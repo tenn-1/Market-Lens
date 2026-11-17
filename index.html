@@ -340,7 +340,7 @@ body {
     </div>
   </div>
 
-  <div class="data-src" id="dataSrc"><span class="dot sim"></span>Loading data…</div>
+  <div class="data-src" id="dataSrc"><span class="dot sim"></span>Connecting… free servers can take up to a minute to wake</div>
 
   <div style="border-top:1px solid var(--border);padding-top:12px;">
     <div class="section-label">Compare</div>
@@ -394,10 +394,10 @@ let COMPANIES = [
 ];
 // Simulation fallback params only — used when the API is unreachable
 const SIM_PARAMS = {
-  AAPL:{S0:175,mu:0.22,sigma:0.26,vol:75e6}, MSFT:{S0:380,mu:0.20,sigma:0.22,vol:22e6},
-  GOOGL:{S0:140,mu:0.18,sigma:0.25,vol:20e6}, AMZN:{S0:185,mu:0.25,sigma:0.30,vol:40e6},
-  NVDA:{S0:500,mu:0.60,sigma:0.50,vol:35e6}, META:{S0:355,mu:0.35,sigma:0.40,vol:18e6},
-  TSLA:{S0:240,mu:0.15,sigma:0.55,vol:85e6}, DEFAULT:{S0:150,mu:0.15,sigma:0.25,vol:10e6}
+  AAPL:{S0:250,mu:0.22,sigma:0.26,vol:75e6}, MSFT:{S0:450,mu:0.20,sigma:0.22,vol:22e6},
+  GOOGL:{S0:250,mu:0.18,sigma:0.25,vol:20e6}, AMZN:{S0:220,mu:0.25,sigma:0.30,vol:40e6},
+  NVDA:{S0:160,mu:0.60,sigma:0.50,vol:35e6}, META:{S0:520,mu:0.35,sigma:0.40,vol:18e6},
+  TSLA:{S0:320,mu:0.15,sigma:0.55,vol:85e6}, DEFAULT:{S0:150,mu:0.15,sigma:0.25,vol:10e6}
 };
 
 const TF_DAYS = { '1M':21, '6M':126, '1Y':252, '2Y':504, '3Y':756 };
@@ -479,12 +479,21 @@ let showMA20 = true, showMA200 = true, showBB = false;
 let searchQuery = '';
 let apiReachable = null; // null=unknown, true/false once checked
 let renderGen = 0;
+const quoteAttempted = new Set();
+async function fetchQuotes(tickers) {
+  tickers.forEach(t => quoteAttempted.add(t));
+  try {
+    const res = await fetch(`${API_BASE}/api/quotes?symbols=${tickers.join(',')}`, { signal: AbortSignal.timeout(60000) });
+    const q = await res.json();
+    Object.entries(q).forEach(([t,p]) => { if (typeof p === 'number') latestPrices[t] = p; });
+  } catch (e) { /* sidebar just shows … */ }
+}
 const liveCache = {}; // ticker -> {ts, data}
 const LIVE_TTL = 60000; // re-fetch from API at most once/minute per ticker client-side
 
 async function checkApiHealth() {
   try {
-    const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(60000) });
     apiReachable = res.ok;
   } catch (e) { apiReachable = false; }
   updateDataSrcLabel();
@@ -499,7 +508,7 @@ function updateDataSrcLabel() {
 async function fetchLive(ticker) {
   const hit = liveCache[ticker];
   if (hit && Date.now()-hit.ts < LIVE_TTL) return hit.data;
-  const res = await fetch(`${API_BASE}/api/stock/${ticker}`, { signal: AbortSignal.timeout(8000) });
+  const res = await fetch(`${API_BASE}/api/stock/${ticker}`, { signal: AbortSignal.timeout(60000) });
   if (!res.ok) throw new Error('bad response');
   const data = await res.json();
   if (data.error) throw new Error(data.error);
@@ -609,9 +618,8 @@ function renderSidebar() {
   });
 
   // fetch any missing prices in background, then refresh just this list
-  filtered.filter(co=>latestPrices[co.ticker]===undefined).forEach(co => {
-    computeScreenerRow(co).then(() => { if(!searchQuery) renderSidebar(); });
-  });
+  const missing = filtered.map(c=>c.ticker).filter(t=>latestPrices[t]===undefined && !quoteAttempted.has(t));
+  if (missing.length) fetchQuotes(missing).then(() => { if(!searchQuery) renderSidebar(); });
 
   // compare list
   const cList = document.getElementById('compareList');
@@ -1183,7 +1191,9 @@ document.getElementById('compareToggle').addEventListener('click', () => {
 });
 
 initTooltips();
-checkApiHealth().then(() => { renderSidebar(); renderContent(); });
+checkApiHealth();
+renderSidebar();
+renderContent();
 </script>
 </body>
 </html>

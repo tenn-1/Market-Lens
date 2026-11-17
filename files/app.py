@@ -114,16 +114,10 @@ def stock(ticker):
         bb_std = close.rolling(20).std()
         golden, death = find_crosses(ma20, ma200)
 
-        info = {}
-        try:
-            info = tk.info or {}
-        except Exception:
-            pass
-
         payload = {
             'ticker': ticker,
-            'name': info.get('shortName') or info.get('longName') or ticker,
-            'sector': info.get('sector', 'N/A'),
+            'name': ticker,
+            'sector': 'N/A',
             'dates': df.index.strftime('%Y-%m-%d').tolist(),
             'close': close.round(2).tolist(),
             'volume': df['Volume'].astype(int).tolist(),
@@ -142,6 +136,49 @@ def stock(ticker):
         return jsonify(payload)
     except Exception as e:
         return jsonify({'error': str(e)}), 502
+
+
+@app.route('/api/quotes')
+def quotes():
+    """Latest close for many tickers in ONE Yahoo request (sidebar prices)."""
+    symbols = [x.strip().upper() for x in request.args.get('symbols', '').split(',') if x.strip()][:25]
+    if not symbols:
+        return jsonify({})
+    key = 'quotes:' + ','.join(sorted(symbols))
+    hit = _cache.get(key)
+    if hit and time.time() - hit[0] < 60:
+        return jsonify(hit[1])
+    try:
+        df = yf.download(symbols, period='5d', auto_adjust=True, progress=False,
+                         group_by='ticker', threads=True)
+        out = {}
+        for sym in symbols:
+            try:
+                try:
+                    sub = df[sym]
+                except KeyError:
+                    sub = df
+                c = sub['Close']
+                if hasattr(c, 'columns'):
+                    c = c.iloc[:, 0]
+                c = c.dropna()
+                if len(c):
+                    out[sym] = round(float(c.iloc[-1]), 2)
+            except Exception:
+                pass
+        _cache[key] = (time.time(), out)
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+
+
+@app.route('/')
+def root():
+    return jsonify({
+        'service': 'Market Lens API',
+        'status': 'running',
+        'endpoints': ['/api/health', '/api/search?q=', '/api/stock/<ticker>']
+    })
 
 
 @app.route('/api/health')
