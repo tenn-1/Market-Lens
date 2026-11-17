@@ -16,16 +16,16 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0a0e1a;
-  --surface: #111827;
-  --surface2: #1a2235;
+  --bg: #050505;
+  --surface: #0d0d0d;
+  --surface2: #151515;
   --border: rgba(255,255,255,0.08);
-  --border-strong: rgba(255,255,255,0.15);
-  --text: #f0f4ff;
-  --text-2: #8b93a8;
-  --text-3: #4a5568;
-  --accent: #3b82f6;
-  --accent-dim: rgba(59,130,246,0.15);
+  --border-strong: rgba(255,255,255,0.16);
+  --text: #f3f4f6;
+  --text-2: #9ca3af;
+  --text-3: #6b7280;
+  --accent: #d4af37;
+  --accent-dim: rgba(212,175,55,0.15);
   --green: #10b981;
   --green-dim: rgba(16,185,129,0.12);
   --red: #ef4444;
@@ -244,7 +244,7 @@ body {
    JS on hover/focus, so it can never be clipped by a chart-card's
    overflow:hidden (needed elsewhere for rounded chart corners). */
 #globalTip {
-  display:none; position:fixed; background:#1a2235; color:var(--text);
+  display:none; position:fixed; background:#151515; color:var(--text);
   font-size:11px; font-weight:400; padding:8px 10px; border-radius:7px;
   border:1px solid var(--border-strong); width:190px; line-height:1.4;
   z-index:9999; box-shadow:0 6px 20px rgba(0,0,0,0.45); pointer-events:none;
@@ -297,6 +297,23 @@ body {
 }
 .company-item:hover .remove-x { opacity:1; }
 .remove-x:hover { background:var(--red-dim); color:var(--red); }
+
+/* ── Indicator dropdown ── */
+body { background: var(--bg); }
+.ind-bar { display:flex; align-items:center; gap:14px; margin:0 0 16px; flex-wrap:wrap; }
+.ind-hint { font-size:11px; color:var(--text-3); }
+.ind-menu { position:relative; }
+.ind-trigger { font-family:inherit; font-size:12px; font-weight:500; color:var(--accent); background:var(--accent-dim); border:1px solid var(--accent); border-radius:8px; padding:7px 12px; cursor:pointer; display:flex; align-items:center; gap:8px; }
+.ind-count { background:var(--accent); color:#0a0a0a; border-radius:9px; padding:0 7px; font-size:11px; font-weight:600; }
+.ind-panel { display:none; position:absolute; left:0; top:calc(100% + 6px); z-index:60; width:270px; max-height:440px; overflow-y:auto; background:var(--surface2); border:1px solid var(--border-strong); border-radius:12px; padding:4px 14px 14px; box-shadow:0 14px 40px rgba(0,0,0,0.6); }
+.ind-menu.open .ind-panel { display:block; }
+.ind-group { font-size:10px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:var(--text-3); margin:14px 0 2px; }
+.ind-opt { position:relative; display:flex; align-items:center; gap:10px; margin-top:10px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--text-2); cursor:pointer; user-select:none; }
+.ind-opt:hover { border-color:var(--border-strong); color:var(--text); }
+.ind-opt.on { color:var(--text); border-color:var(--accent); background:var(--accent-dim); }
+.ind-box { width:12px; height:12px; border:1px solid var(--text-3); border-radius:3px; flex-shrink:0; }
+.ind-opt.on .ind-box { background:var(--accent); border-color:var(--accent); }
+.ind-opt .info-ic { position:absolute; top:-7px; right:8px; margin:0; background:var(--surface2); }
 
 @media (max-width: 768px) {
   .main { grid-template-columns: 1fr; }
@@ -401,7 +418,7 @@ const SIM_PARAMS = {
 };
 
 const TF_DAYS = { '1M':21, '6M':126, '1Y':252, '2Y':504, '3Y':756 };
-const SERIES_COLORS = ['#3b82f6','#10b981','#f59e0b','#a78bfa','#f43f5e'];
+const SERIES_COLORS = ['#38bdf8','#34d399','#c084fc','#f472b6','#fb923c'];
 
 /* ── GBM simulation (fallback only, when API is unreachable) ── */
 function genPrices(co, nDays) {
@@ -476,6 +493,26 @@ let compareTickers = [];
 let activeView = 'analysis';
 let mainChart = null, volChart = null, vol2Chart = null;
 let showMA20 = true, showMA200 = true, showBB = false;
+const IND = { rsi:true, macd:true, ema:false, stoch:false, adx:false, stdev:false, fib:false, ichi:false };
+let indMenuOpen = false, extraCharts = [];
+const IND_MENU = [
+  ['Trend', [['ma20','MA-20'],['ma200','MA-200'],['ema','EMA 12 / 26'],['ichi','Ichimoku cloud']]],
+  ['Momentum', [['rsi','RSI (14)'],['macd','MACD'],['stoch','Stochastic oscillator']]],
+  ['Volatility', [['bb','Bollinger bands'],['stdev','Standard deviation']]],
+  ['Trend strength', [['adx','ADX (14)']]],
+  ['Levels', [['fib','Fibonacci retracement']]],
+];
+const isOn = k => k==='ma20' ? showMA20 : k==='ma200' ? showMA200 : k==='bb' ? showBB : IND[k];
+const flipInd = k => { if (k==='ma20') showMA20=!showMA20; else if (k==='ma200') showMA200=!showMA200; else if (k==='bb') showBB=!showBB; else IND[k]=!IND[k]; };
+function indMenuHTML() {
+  const n = Object.values(IND).filter(Boolean).length + [showMA20,showMA200,showBB].filter(Boolean).length;
+  return `<div class="ind-menu ${indMenuOpen?'open':''}" id="indMenu">
+    <button class="ind-trigger" id="indTrigger">Indicators <span class="ind-count">${n}</span> ▾</button>
+    <div class="ind-panel">${IND_MENU.map(([g,items]) => `<div class="ind-group">${g}</div>` + items.map(([k,label]) => `
+      <div class="ind-opt ${isOn(k)?'on':''}" data-ind="${k}" data-tip="${TOOLTIPS[k].replace(/"/g,'&quot;')}" tabindex="0" role="checkbox" aria-checked="${!!isOn(k)}">
+        <span class="ind-box"></span><span>${label}</span><span class="info-ic" aria-hidden="true">i</span>
+      </div>`).join('')).join('')}</div></div>`;
+}
 let searchQuery = '';
 let apiReachable = null; // null=unknown, true/false once checked
 let renderGen = 0;
@@ -536,6 +573,7 @@ async function getSeries(ticker, nDays) {
         prices: slice(d.close), vols: slice(d.volume),
         ma20given: slice(d.ma20), ma200given: slice(d.ma200),
         bbU: slice(d.bbUpper), bbL: slice(d.bbLower), rsiGiven: slice(d.rsi14),
+        full: { c:d.close, h:d.high||null, l:d.low||null },
       };
     } catch (e) {
       apiReachable = false; lastApiFailAt = Date.now(); updateDataSrcLabel();
@@ -695,9 +733,63 @@ function setTF(tf) {
 function destroyCharts() {
   [mainChart, volChart, vol2Chart].forEach(c => { if(c) c.destroy(); });
   mainChart=volChart=vol2Chart=null;
+  extraCharts.forEach(c => c.destroy()); extraCharts = [];
+}
+
+/* ── Indicator math (computed in the browser so it also works on fallback data) ── */
+function emaArr(a, n) {
+  const k = 2/(n+1), out = new Array(a.length).fill(null); let prev = null;
+  for (let i=0;i<a.length;i++) {
+    if (i === n-1) { prev = a.slice(0,n).reduce((x,y)=>x+y,0)/n; out[i] = prev; }
+    else if (i >= n) { prev = a[i]*k + prev*(1-k); out[i] = prev; }
+  }
+  return out;
+}
+function stochCalc(h, l, c, n=14) {
+  const k = c.map((_,i) => { if (i<n-1) return null; let hi=-Infinity, lo=Infinity;
+    for (let j=i-n+1;j<=i;j++) { if (h[j]>hi) hi=h[j]; if (l[j]<lo) lo=l[j]; }
+    return hi===lo ? 50 : (c[i]-lo)/(hi-lo)*100; });
+  const d = k.map((_,i) => i<n+1 ? null : (k[i]+k[i-1]+k[i-2])/3);
+  return { k, d };
+}
+function adxCalc(h, l, c, n=14) {
+  const len = c.length, pdi = new Array(len).fill(null), mdi = new Array(len).fill(null),
+        adx = new Array(len).fill(null), dx = [];
+  let trS=0, pS=0, mS=0;
+  for (let i=1;i<len;i++) {
+    const up = h[i]-h[i-1], dn = l[i-1]-l[i];
+    const tr = Math.max(h[i]-l[i], Math.abs(h[i]-c[i-1]), Math.abs(l[i]-c[i-1]));
+    const p = (up>dn && up>0) ? up : 0, m = (dn>up && dn>0) ? dn : 0;
+    if (i<=n) { trS+=tr; pS+=p; mS+=m; } else { trS = trS-trS/n+tr; pS = pS-pS/n+p; mS = mS-mS/n+m; }
+    if (i>=n) { const pd = 100*pS/trS, md = 100*mS/trS; pdi[i]=pd; mdi[i]=md; dx[i] = 100*Math.abs(pd-md)/((pd+md)||1); }
+  }
+  let a = null;
+  for (let i=n;i<len;i++) {
+    if (i === 2*n-1) { let t=0; for (let j=n;j<=i;j++) t+=dx[j]; a=t/n; adx[i]=a; }
+    else if (i > 2*n-1) { a = (a*(n-1)+dx[i])/n; adx[i]=a; }
+  }
+  return { pdi, mdi, adx };
+}
+function ichiCalc(h, l) {
+  const mid = (i,n) => { if (i<n-1) return null; let hi=-Infinity, lo=Infinity;
+    for (let j=i-n+1;j<=i;j++) { if (h[j]>hi) hi=h[j]; if (l[j]<lo) lo=l[j]; } return (hi+lo)/2; };
+  const t = h.map((_,i)=>mid(i,9)), k = h.map((_,i)=>mid(i,26)), b = h.map((_,i)=>mid(i,52));
+  const sa = h.map((_,i)=> (i>=26 && t[i-26]!=null && k[i-26]!=null) ? (t[i-26]+k[i-26])/2 : null);
+  const sb = h.map((_,i)=> i>=26 ? b[i-26] : null);
+  return { tenkan:t, kijun:k, spanA:sa, spanB:sb };
+}
+function stdevArr(a, n=20) {
+  return a.map((_,i) => { if (i<n-1) return null; const w = a.slice(i-n+1,i+1), m = w.reduce((x,y)=>x+y,0)/n;
+    return Math.sqrt(w.reduce((x,y)=>x+(y-m)**2,0)/n); });
 }
 
 const TOOLTIPS = {
+  ema: 'Exponential moving average (12 and 26 day). Weights recent prices more heavily than a simple MA, so it reacts faster to turns.',
+  stoch: 'Stochastic oscillator (14, 3). Shows where the close sits within the recent high-low range. Above 80 is overbought, below 20 is oversold. %K crossing %D can hint at reversals.',
+  adx: 'Average directional index (14). Measures trend strength, not direction. Above 25 suggests a strong trend; below 20 suggests a choppy market. +DI and −DI show direction.',
+  stdev: 'Standard deviation of the closing price over 20 days. A volatility measure: higher means bigger price swings. It is the engine behind Bollinger Bands.',
+  fib: 'Fibonacci retracement levels (23.6%, 38.2%, 50%, 61.8%, 78.6%) drawn between the high and low of the visible period. Traders watch them as possible support or resistance on pullbacks.',
+  ichi: 'Ichimoku cloud: Tenkan (9) and Kijun (26) lines plus a shaded cloud. Price above the cloud is bullish, below is bearish. Needs 52+ days of history.',
   ma20: 'Moving average of the last 20 trading days. Tracks short-term momentum and reacts quickly to price changes.',
   ma200: 'Moving average of the last 200 trading days. Represents the long-term trend; slow to react.',
   golden: 'Golden cross: MA-20 crosses above MA-200. A classic bullish signal suggesting upward momentum is building.',
@@ -730,10 +822,10 @@ function initTooltips() {
     tip.style.top = top + 'px';
   }
   function hide() { tip.style.display = 'none'; }
-  document.addEventListener('mouseover', e => { const el = e.target.closest('.info-ic'); if (el) show(el); });
-  document.addEventListener('mouseout', e => { if (e.target.closest('.info-ic')) hide(); });
-  document.addEventListener('focusin', e => { const el = e.target.closest('.info-ic'); if (el) show(el); });
-  document.addEventListener('focusout', e => { if (e.target.closest('.info-ic')) hide(); });
+  document.addEventListener('mouseover', e => { const el = e.target.closest('[data-tip]'); if (el) show(el); });
+  document.addEventListener('mouseout', e => { if (e.target.closest('[data-tip]')) hide(); });
+  document.addEventListener('focusin', e => { const el = e.target.closest('[data-tip]'); if (el) show(el); });
+  document.addEventListener('focusout', e => { if (e.target.closest('[data-tip]')) hide(); });
   window.addEventListener('scroll', hide, true);
 }
 
@@ -747,6 +839,11 @@ async function renderAnalysis() {
   const S = await getSeries(activeTicker, nDays);
   if (renderToken !== renderGen) return; // a newer render started; drop this one
   const { dates, prices, vols } = S;
+  // Indicators run on the full history when available (so 1M still has warm-up), then get trimmed to the view.
+  const approx = c => ({ h:c.map((p,i)=>Math.max(p,c[i-1]??p)*1.004), l:c.map((p,i)=>Math.min(p,c[i-1]??p)*0.996) });
+  const F0 = S.full || { c:prices };
+  const FH = F0.h || approx(F0.c).h, FL = F0.l || approx(F0.c).l;
+  const tail = a => a.slice(a.length - prices.length);
 
   const cur = prices[prices.length-1];
   const prev = prices[prices.length-2]||prices[0];
@@ -822,6 +919,8 @@ async function renderAnalysis() {
       </div>
     </div>
 
+    <div class="ind-bar">${indMenuHTML()}<span class="ind-hint">Pick indicators to overlay or add as panels. Hover an option to see what it means.</span></div>
+
     <div class="chart-card">
       <div class="chart-toolbar">
         <div>
@@ -829,12 +928,6 @@ async function renderAnalysis() {
           <div class="chart-meta">${dates[0].toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})} – ${dates[dates.length-1].toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
         </div>
         <div class="chart-legend" id="priceLegend"></div>
-      </div>
-      <div class="ma-controls" id="maControls">
-        <button class="ma-btn ${showMA20?'on':''}" data-ma="20">MA-20</button>
-        <button class="ma-btn ${showMA200?'on':''}" data-ma="200">MA-200</button>
-        <button class="ma-btn ${showBB?'on':''}" data-ma="bb">Bollinger</button>
-        ${ic('ma20')}${ic('bb')}
       </div>
       <div class="chart-body">
         <div class="chart-wrap" style="height:280px">
@@ -884,26 +977,16 @@ async function renderAnalysis() {
       </div>`}
     </div>
 
-    <div class="chart-card">
-      <div class="chart-toolbar">
-        <div class="chart-title">RSI (14) &amp; MACD ${ic('macd')}</div>
-      </div>
-      <div class="chart-body">
-        <div class="chart-wrap" style="height:150px">
-          <canvas id="rsiChart" role="img" aria-label="RSI and MACD indicator chart for ${co.name}"></canvas>
-        </div>
-      </div>
-    </div>
+    <div id="extraPanels"></div>
   `;
 
-  /* MA toggle buttons */
-  document.querySelectorAll('.ma-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (btn.dataset.ma==='20') showMA20=!showMA20;
-      else if (btn.dataset.ma==='200') showMA200=!showMA200;
-      else showBB=!showBB;
-      renderAnalysis();
-    });
+  /* Indicator dropdown */
+  const menu = document.getElementById('indMenu');
+  document.getElementById('indTrigger').addEventListener('click', e => { e.stopPropagation(); indMenuOpen = !indMenuOpen; menu.classList.toggle('open', indMenuOpen); });
+  menu.querySelectorAll('.ind-opt').forEach(o => {
+    const go = () => { flipInd(o.dataset.ind); renderAnalysis(); };
+    o.addEventListener('click', go);
+    o.addEventListener('keydown', e => { if (e.key==='Enter' || e.key===' ') { e.preventDefault(); go(); } });
   });
 
   /* Build legend */
@@ -915,6 +998,12 @@ async function renderAnalysis() {
     </span>`).join('');
   if(showMA20) legend.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>MA-20</span>`;
   if(showMA200) legend.innerHTML += `<span class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span>MA-200</span>`;
+
+  const lg = (c,t) => `<span class="legend-item"><span class="legend-dot" style="background:${c}"></span>${t}</span>`;
+  if (showBB) legend.innerHTML += lg('rgba(156,163,175,0.7)','Bollinger');
+  if (IND.ema) legend.innerHTML += lg('#60a5fa','EMA 12') + lg('#c084fc','EMA 26');
+  if (IND.ichi) legend.innerHTML += lg('#38bdf8','Tenkan') + lg('#f472b6','Kijun') + lg('rgba(52,211,153,0.6)','Cloud');
+  if (IND.fib) legend.innerHTML += lg('#cbd5e1','Fib levels');
 
   /* ── Main price chart ── */
   const skipN = Math.max(1, Math.floor(nDays/60));
@@ -937,16 +1026,39 @@ async function renderAnalysis() {
     borderDash:[4,2], tension:0.2, order:1
   });
   if(showMA200 && nDays>=200) datasets.push({
-    label:'MA-200', data:ma200, borderColor:'#f59e0b',
+    label:'MA-200', data:ma200, borderColor:'#fb923c',
     backgroundColor:'transparent', fill:false, borderWidth:1.5, pointRadius:0,
     borderDash:[6,3], tension:0.2, order:0
   });
   if(showBB) {
     const bU = S.bbU || rollingMean(prices,20).map((m,i)=> m==null?null: m + 2*Math.sqrt(prices.slice(Math.max(0,i-19),i+1).reduce((a,b)=>a+(b-m)**2,0)/20));
     const bL = S.bbL || rollingMean(prices,20).map((m,i)=> m==null?null: m - 2*Math.sqrt(prices.slice(Math.max(0,i-19),i+1).reduce((a,b)=>a+(b-m)**2,0)/20));
-    datasets.push({ label:'BB upper', data:bU, borderColor:'rgba(139,147,168,0.5)', backgroundColor:'transparent', fill:false, borderWidth:1, pointRadius:0, borderDash:[2,2], tension:0.2, order:4 });
-    datasets.push({ label:'BB lower', data:bL, borderColor:'rgba(139,147,168,0.5)', backgroundColor:'transparent', fill:false, borderWidth:1, pointRadius:0, borderDash:[2,2], tension:0.2, order:4 });
+    datasets.push({ label:'BB upper', data:bU, borderColor:'rgba(156,163,175,0.55)', backgroundColor:'transparent', fill:false, borderWidth:1, pointRadius:0, borderDash:[2,2], tension:0.2, order:4 });
+    datasets.push({ label:'BB lower', data:bL, borderColor:'rgba(156,163,175,0.55)', backgroundColor:'transparent', fill:false, borderWidth:1, pointRadius:0, borderDash:[2,2], tension:0.2, order:4 });
   }
+
+  const L = (label,data,color,extra={}) => ({ label, data, borderColor:color, backgroundColor:'transparent', fill:false, borderWidth:1.4, pointRadius:0, tension:0.2, order:1, ...extra });
+  if (IND.ema) { datasets.push(L('EMA 12', tail(emaArr(F0.c,12)), '#60a5fa')); datasets.push(L('EMA 26', tail(emaArr(F0.c,26)), '#c084fc')); }
+  if (IND.ichi) {
+    const ik = ichiCalc(FH, FL);
+    datasets.push(L('Tenkan', tail(ik.tenkan), '#38bdf8', {borderWidth:1.2}));
+    datasets.push(L('Kijun', tail(ik.kijun), '#f472b6', {borderWidth:1.2}));
+    datasets.push(L('Span A', tail(ik.spanA), 'rgba(52,211,153,0.40)', {borderWidth:1, fill:'+1', backgroundColor:'rgba(52,211,153,0.10)'}));
+    datasets.push(L('Span B', tail(ik.spanB), 'rgba(52,211,153,0.40)', {borderWidth:1}));
+  }
+  const fibPlugin = { id:'fib', afterDatasetsDraw(chart) {
+    if (!IND.fib) return;
+    const { ctx, chartArea:ca, scales:{ y } } = chart;
+    const fh = Math.max(...prices), fl = Math.min(...prices);
+    ctx.save(); ctx.font = '10px JetBrains Mono, monospace';
+    [0,0.236,0.382,0.5,0.618,0.786,1].forEach(r => {
+      const v = fh - r*(fh-fl), py = y.getPixelForValue(v);
+      if (py < ca.top || py > ca.bottom) return;
+      ctx.setLineDash([2,4]); ctx.strokeStyle = 'rgba(203,213,225,0.45)';
+      ctx.beginPath(); ctx.moveTo(ca.left,py); ctx.lineTo(ca.right,py); ctx.stroke();
+      ctx.fillStyle = '#cbd5e1'; ctx.fillText((r*100).toFixed(1)+'%  $'+v.toFixed(2), ca.left+6, py-3);
+    });
+    ctx.restore(); } };
 
   const crossPlugin = {
     id:'crossMarkers',
@@ -969,15 +1081,15 @@ async function renderAnalysis() {
   mainChart = new Chart(document.getElementById('mainChart'), {
     type:'line',
     data:{ labels, datasets },
-    plugins:[crossPlugin],
+    plugins:[crossPlugin, fibPlugin],
     options:{
       responsive:true, maintainAspectRatio:false, animation:false,
       interaction:{ intersect:false, mode:'index' },
       plugins:{
         legend:{ display:false },
         tooltip:{
-          backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)',
-          borderWidth:1, titleColor:'#8b93a8', bodyColor:'#f0f4ff',
+          backgroundColor:'#151515', borderColor:'rgba(255,255,255,0.16)',
+          borderWidth:1, titleColor:'#9ca3af', bodyColor:'#f3f4f6',
           padding:10, cornerRadius:8,
           callbacks:{
             label: ctx=>`  ${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`
@@ -985,12 +1097,12 @@ async function renderAnalysis() {
         }
       },
       scales:{
-        x:{ ticks:{ color:'#4a5568', maxRotation:0, font:{size:10},
+        x:{ ticks:{ color:'#6b7280', maxRotation:0, font:{size:10},
               callback:(v,i)=>sparseLabels[i]||null },
-            grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+            grid:{ color:'rgba(255,255,255,0.05)', drawBorder:false },
             border:{ display:false } },
-        y:{ ticks:{ color:'#4a5568', font:{size:10}, callback:v=>'$'+v.toFixed(0) },
-            grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+        y:{ ticks:{ color:'#6b7280', font:{size:10}, callback:v=>'$'+v.toFixed(0) },
+            grid:{ color:'rgba(255,255,255,0.05)', drawBorder:false },
             border:{ display:false }, position:'right' }
       }
     }
@@ -1005,14 +1117,14 @@ async function renderAnalysis() {
     options:{
       responsive:true, maintainAspectRatio:false, animation:false,
       plugins:{ legend:{display:false}, tooltip:{
-        backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)',
-        borderWidth:1, titleColor:'#8b93a8', bodyColor:'#f0f4ff', padding:8, cornerRadius:6,
+        backgroundColor:'#151515', borderColor:'rgba(255,255,255,0.16)',
+        borderWidth:1, titleColor:'#9ca3af', bodyColor:'#f3f4f6', padding:8, cornerRadius:6,
         callbacks:{ label:ctx=>`  ${ctx.parsed.y.toFixed(1)}M shares` }
       }},
       scales:{
         x:{ ticks:{display:false}, grid:{display:false}, border:{display:false} },
-        y:{ ticks:{ color:'#4a5568', font:{size:10}, callback:v=>v+'M' },
-            grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+        y:{ ticks:{ color:'#6b7280', font:{size:10}, callback:v=>v+'M' },
+            grid:{ color:'rgba(255,255,255,0.05)', drawBorder:false },
             border:{ display:false }, position:'right' }
       }
     }
@@ -1037,15 +1149,15 @@ async function renderAnalysis() {
       data:{ labels:sparseIdx.map(i=>labels[i]), datasets:volDs },
       options:{
         responsive:true, maintainAspectRatio:false, animation:false,
-        plugins:{ legend:{ display:true, position:'bottom', labels:{color:'#8b93a8',font:{size:10},boxWidth:10,boxHeight:3} },
-          tooltip:{ backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)',
-            borderWidth:1, titleColor:'#8b93a8', bodyColor:'#f0f4ff', padding:8, cornerRadius:6,
+        plugins:{ legend:{ display:true, position:'bottom', labels:{color:'#9ca3af',font:{size:10},boxWidth:10,boxHeight:3} },
+          tooltip:{ backgroundColor:'#151515', borderColor:'rgba(255,255,255,0.16)',
+            borderWidth:1, titleColor:'#9ca3af', bodyColor:'#f3f4f6', padding:8, cornerRadius:6,
             callbacks:{ label:ctx=>`  ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}M` } }
         },
         scales:{
           x:{ ticks:{display:false}, grid:{display:false}, border:{display:false} },
-          y:{ ticks:{ color:'#4a5568', font:{size:10}, callback:v=>v+'M' },
-              grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+          y:{ ticks:{ color:'#6b7280', font:{size:10}, callback:v=>v+'M' },
+              grid:{ color:'rgba(255,255,255,0.05)', drawBorder:false },
               border:{display:false}, position:'right' }
         }
       }
@@ -1060,44 +1172,53 @@ async function renderAnalysis() {
       options:{
         responsive:true, maintainAspectRatio:false, animation:false,
         plugins:{ legend:{display:false}, tooltip:{
-          backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)',
-          borderWidth:1, titleColor:'#8b93a8', bodyColor:'#f0f4ff', padding:8, cornerRadius:6,
+          backgroundColor:'#151515', borderColor:'rgba(255,255,255,0.16)',
+          borderWidth:1, titleColor:'#9ca3af', bodyColor:'#f3f4f6', padding:8, cornerRadius:6,
           callbacks:{ label:ctx=>`  ${ctx.parsed.y>=0?'+':''}${ctx.parsed.y.toFixed(2)}%` }
         }},
         scales:{
           x:{ ticks:{display:false}, grid:{display:false}, border:{display:false} },
-          y:{ ticks:{ color:'#4a5568', font:{size:10}, callback:v=>(v>=0?'+':'')+v+'%' },
-              grid:{ color:'rgba(255,255,255,0.04)', drawBorder:false },
+          y:{ ticks:{ color:'#6b7280', font:{size:10}, callback:v=>(v>=0?'+':'')+v+'%' },
+              grid:{ color:'rgba(255,255,255,0.05)', drawBorder:false },
               border:{display:false}, position:'right' }
         }
       }
     });
   }
 
-  /* ── RSI / MACD chart ── */
+  /* ── Indicator sub-panels ── */
   const md = macdCalc(prices);
-  new Chart(document.getElementById('rsiChart'), {
-    type:'line',
-    data:{ labels, datasets:[
-      { label:'RSI', data:rsiArr, borderColor:'#a78bfa', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, tension:0.2, yAxisID:'rsi' },
-      { label:'MACD', data:md.line, borderColor:'#3b82f6', backgroundColor:'transparent', borderWidth:1.2, pointRadius:0, tension:0.2, yAxisID:'macd' },
-      { label:'Signal', data:md.sig, borderColor:'#f59e0b', backgroundColor:'transparent', borderWidth:1.2, pointRadius:0, borderDash:[3,2], tension:0.2, yAxisID:'macd' }
-    ]},
-    options:{
-      responsive:true, maintainAspectRatio:false, animation:false,
-      interaction:{ intersect:false, mode:'index' },
-      plugins:{
-        legend:{ display:true, position:'top', align:'end', labels:{color:'#8b93a8',font:{size:10},boxWidth:10,boxHeight:3} },
-        tooltip:{ backgroundColor:'#1a2235', borderColor:'rgba(255,255,255,0.12)', borderWidth:1,
-          titleColor:'#8b93a8', bodyColor:'#f0f4ff', padding:8, cornerRadius:6 }
-      },
-      scales:{
-        x:{ ticks:{display:false}, grid:{display:false}, border:{display:false} },
-        rsi:{ position:'left', min:0, max:100, ticks:{color:'#4a5568',font:{size:9}}, grid:{color:'rgba(255,255,255,0.04)',drawBorder:false}, border:{display:false} },
-        macd:{ position:'right', ticks:{color:'#4a5568',font:{size:9}}, grid:{display:false}, border:{display:false} }
-      }
-    }
-  });
+  const ax = (extra={}) => ({ position:'right', ticks:{color:'#6b7280',font:{size:9}}, grid:{color:'rgba(255,255,255,0.05)'}, border:{display:false}, ...extra });
+  const ln = (label,data,color,extra={}) => ({ label, data, borderColor:color, backgroundColor:'transparent', borderWidth:1.4, pointRadius:0, tension:0.2, ...extra });
+  const refPlugin = (lines, sid) => ({ id:'ref', afterDraw(ch) {
+    const { ctx, chartArea:ca, scales } = ch, y = scales[sid];
+    ctx.save(); ctx.setLineDash([3,3]); ctx.strokeStyle = 'rgba(156,163,175,0.35)';
+    lines.forEach(v => { const py = y.getPixelForValue(v); ctx.beginPath(); ctx.moveTo(ca.left,py); ctx.lineTo(ca.right,py); ctx.stroke(); });
+    ctx.restore(); } });
+  let html = ''; const jobs = [];
+  const addPanel = (id, title, tip, datasets, scales, ref) => {
+    html += `<div class="chart-card"><div class="chart-toolbar"><div class="chart-title">${title} ${ic(tip)}</div></div><div class="chart-body"><div class="chart-wrap" style="height:150px"><canvas id="${id}" role="img" aria-label="${title} chart"></canvas></div></div></div>`;
+    jobs.push([id, datasets, scales, ref]);
+  };
+  if (IND.rsi || IND.macd) {
+    const ds = [], sc = {};
+    if (IND.rsi) { ds.push(ln('RSI', rsiArr, '#a78bfa', {yAxisID:'rsi'})); sc.rsi = ax({position:'left', min:0, max:100}); }
+    if (IND.macd) { ds.push(ln('MACD', md.line, '#60a5fa', {yAxisID:'macd'})); ds.push(ln('Signal', md.sig, '#fb923c', {yAxisID:'macd', borderDash:[3,2]}));
+      sc.macd = ax(IND.rsi ? {grid:{display:false}} : {}); }
+    addPanel('pnlRsi', [IND.rsi&&'RSI (14)', IND.macd&&'MACD'].filter(Boolean).join(' &amp; '), IND.macd?'macd':'rsi', ds, sc, IND.rsi ? [[70,30],'rsi'] : null);
+  }
+  if (IND.stoch) { const st = stochCalc(FH, FL, F0.c);
+    addPanel('pnlStoch', 'Stochastic (14, 3)', 'stoch', [ln('%K', tail(st.k), '#38bdf8'), ln('%D', tail(st.d), '#fb923c', {borderDash:[3,2]})], { y: ax({min:0, max:100}) }, [[80,20],'y']); }
+  if (IND.adx) { const ad = adxCalc(FH, FL, F0.c);
+    addPanel('pnlAdx', 'ADX (14)', 'adx', [ln('ADX', tail(ad.adx), '#f3f4f6', {borderWidth:2}), ln('+DI', tail(ad.pdi), '#34d399'), ln('−DI', tail(ad.mdi), '#f87171')], { y: ax({min:0}) }, [[25],'y']); }
+  if (IND.stdev) addPanel('pnlStd', 'Standard deviation (20)', 'stdev', [ln('Std dev', tail(stdevArr(F0.c,20)), '#a78bfa', {fill:true, backgroundColor:'rgba(167,139,250,0.12)'})], { y: ax() }, null);
+  document.getElementById('extraPanels').innerHTML = html;
+  jobs.forEach(([id, datasets, scales, ref]) => extraCharts.push(new Chart(document.getElementById(id), {
+    type:'line', data:{ labels, datasets }, plugins: ref ? [refPlugin(ref[0], ref[1])] : [],
+    options:{ responsive:true, maintainAspectRatio:false, animation:false, interaction:{intersect:false, mode:'index'},
+      plugins:{ legend:{display:true, position:'top', align:'end', labels:{color:'#9ca3af', font:{size:10}, boxWidth:10, boxHeight:3}},
+        tooltip:{ backgroundColor:'#151515', borderColor:'rgba(255,255,255,0.16)', borderWidth:1, titleColor:'#9ca3af', bodyColor:'#f3f4f6', padding:8, cornerRadius:6 } },
+      scales:{ x:{ticks:{display:false}, grid:{display:false}, border:{display:false}}, ...scales } } })));
 }
 
 /* ── Screener view (ranks your current watchlist — "all stocks" live-ranking
@@ -1190,6 +1311,9 @@ document.getElementById('compareToggle').addEventListener('click', () => {
   renderContent();
 });
 
+document.addEventListener('click', e => {
+  if (indMenuOpen && !e.target.closest('#indMenu')) { indMenuOpen = false; const m = document.getElementById('indMenu'); if (m) m.classList.remove('open'); }
+});
 initTooltips();
 checkApiHealth();
 renderSidebar();

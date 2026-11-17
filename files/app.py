@@ -121,6 +121,8 @@ def stock(ticker):
             'dates': df.index.strftime('%Y-%m-%d').tolist(),
             'close': close.round(2).tolist(),
             'volume': df['Volume'].astype(int).tolist(),
+            'high': clean(df['High'].round(2)),
+            'low': clean(df['Low'].round(2)),
             'ma20': clean(ma20.round(2)),
             'ma200': clean(ma200.round(2)),
             'rsi14': clean(rsi14.round(1)),
